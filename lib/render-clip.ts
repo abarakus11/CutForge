@@ -13,7 +13,8 @@ import { encodeSettingsForQuality } from "@/lib/video-quality";
 import { parseHighlightColor, writeClipAssFile } from "@/lib/captions";
 import { assFilterForPath } from "@/lib/ass-text";
 import { downloadClipSectionWithStreams } from "@/lib/ffmpeg-download";
-import { fetchYouTubeMetaHttp, isVercelRuntime } from "@/lib/youtube-meta";
+import { configureYtdlForServerless } from "@/lib/ytdl-vercel";
+import { isVercelRuntime, fetchYouTubeMetaHttp } from "@/lib/youtube-meta";
 import {
   getCachedStreamUrl,
   getFfmpegPath,
@@ -229,6 +230,8 @@ async function reformatForPlatform(
 }
 
 export async function getVideoDuration(videoId: string): Promise<number> {
+  configureYtdlForServerless();
+
   try {
     const info = (await ytDlp(watchUrl(videoId), {
       dumpSingleJson: true,
@@ -269,6 +272,7 @@ export async function renderClipToBuffer({
   highlightColor,
   captionFont,
 }: RenderClipOptions): Promise<Buffer> {
+  configureYtdlForServerless();
   const hl = parseHighlightColor(highlightColor ?? undefined);
   const lang = captionLang || "auto";
   const font = captionFont || "arial-black";
@@ -288,7 +292,10 @@ export async function renderClipToBuffer({
   const cached = getCachedClip(cacheKey);
   if (cached) return cached;
 
-  const videoDuration = knownDuration ?? (await getVideoDuration(videoId));
+  const videoDuration =
+    knownDuration && knownDuration > 0
+      ? knownDuration
+      : await getVideoDuration(videoId).catch(() => Math.max(end + 120, 600));
   const range = clampClipRange(start, end, videoDuration);
 
   if (range.end - range.start < 3) {

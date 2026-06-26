@@ -19,6 +19,7 @@ function clipQueryFromRequest(searchParams: URLSearchParams) {
     searchParams.get("highlightColor"),
   );
   const captionFont = parseCaptionFontSetting(searchParams.get("captionFont"));
+  const videoDuration = Number(searchParams.get("duration"));
 
   return {
     videoId,
@@ -29,6 +30,7 @@ function clipQueryFromRequest(searchParams: URLSearchParams) {
     captionLang,
     highlightColor,
     captionFont,
+    videoDuration: Number.isFinite(videoDuration) ? videoDuration : undefined,
   };
 }
 
@@ -73,6 +75,7 @@ export async function GET(request: NextRequest) {
       end: clip.end,
       format: clip.format,
       quality: clip.quality,
+      videoDuration: clip.videoDuration,
       captionLang: clip.captionLang,
       highlightColor: clip.highlightColor,
       captionFont: clip.captionFont,

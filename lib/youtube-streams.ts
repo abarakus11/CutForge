@@ -1,3 +1,4 @@
+import { configureYtdlForServerless } from "@/lib/ytdl-vercel";
 import { isVercelRuntime } from "@/lib/youtube-meta";
 import ytdl from "@distube/ytdl-core";
 import { ytDlp, watchUrl, YT_DLP_FLAGS } from "@/lib/ytdlp";
@@ -54,6 +55,7 @@ function withTimeout<T>(
 }
 
 async function streamsFromYtdl(videoId: string): Promise<StreamUrls | null> {
+  configureYtdlForServerless();
   const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${videoId}`);
   const muxed = ytdl.chooseFormat(info.formats, {
     quality: "highest",
@@ -149,6 +151,7 @@ async function raceStreamResolvers(
 export async function fetchStreamsServer(
   videoId: string,
 ): Promise<StreamUrls | null> {
+  configureYtdlForServerless();
   const workerUrl = process.env.CLIP_WORKER_URL?.replace(/\/$/, "");
   if (workerUrl) {
     try {

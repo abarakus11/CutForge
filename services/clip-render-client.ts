@@ -16,6 +16,7 @@ export interface ClientRenderOptions {
   end: number;
   format: PlatformId;
   quality?: RenderQuality;
+  videoDuration?: number;
   captionLang?: string | null;
   highlightColor?: string | null;
   captionFont?: string | null;
@@ -214,6 +215,7 @@ export async function renderClipClient(
     end,
     format,
     quality = "full",
+    videoDuration,
     captionLang,
     highlightColor,
     captionFont,
@@ -238,6 +240,9 @@ export async function renderClipClient(
   if (captionLang) serverParams.set("captionLang", captionLang);
   if (highlightColor) serverParams.set("highlightColor", highlightColor);
   if (captionFont) serverParams.set("captionFont", captionFont);
+  if (videoDuration && videoDuration > 0) {
+    serverParams.set("duration", String(Math.floor(videoDuration)));
+  }
 
   const workerBase = process.env.NEXT_PUBLIC_CLIP_WORKER_URL?.replace(/\/$/, "");
 
