@@ -183,6 +183,21 @@ async function runFfmpeg(
   }
 }
 
+function startProgressTicker(
+  onProgress: ((pct: number, msg: string) => void) | undefined,
+  from: number,
+  to: number,
+  message: string,
+): () => void {
+  let pct = from;
+  onProgress?.(pct, message);
+  const id = setInterval(() => {
+    pct = Math.min(to, pct + 2);
+    onProgress?.(pct, message);
+  }, 2500);
+  return () => clearInterval(id);
+}
+
 /** Render a clip entirely in the browser (for Vercel / serverless). */
 export async function renderClipClient(
   options: ClientRenderOptions,
@@ -218,12 +233,22 @@ export async function renderClipClient(
 
   try {
     onProgress?.(8, "Processando no servidor…");
-    const serverRes = await fetch(`/api/clips/render?${serverParams}`, {
-      signal: AbortSignal.timeout(300000),
-    });
-    if (serverRes.ok) {
-      onProgress?.(100, "Pronto!");
-      return serverRes.blob();
+    const stopTicker = startProgressTicker(
+      onProgress,
+      10,
+      88,
+      "Gerando corte com legendas…",
+    );
+    try {
+      const serverRes = await fetch(`/api/clips/render?${serverParams}`, {
+        signal: AbortSignal.timeout(300000),
+      });
+      if (serverRes.ok) {
+        onProgress?.(100, "Pronto!");
+        return serverRes.blob();
+      }
+    } finally {
+      stopTicker();
     }
   } catch {
     // fallback para render no navegador

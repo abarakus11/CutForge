@@ -14,11 +14,11 @@ export interface PlatformOutput {
 }
 
 const PLATFORM_OUTPUT: Record<PlatformId, PlatformOutput> = {
-  shorts: { width: 2160, height: 3840, label: "9:16 4K" },
-  reels: { width: 2160, height: 3840, label: "9:16 4K" },
-  tiktok: { width: 2160, height: 3840, label: "9:16 4K" },
-  twitter: { width: 2160, height: 2160, label: "1:1 4K" },
-  facebook: { width: 3840, height: 2160, label: "16:9 4K" },
+  shorts: { width: 1080, height: 1920, label: "9:16 1080p" },
+  reels: { width: 1080, height: 1920, label: "9:16 1080p" },
+  tiktok: { width: 1080, height: 1920, label: "9:16 1080p" },
+  twitter: { width: 1080, height: 1080, label: "1:1 1080p" },
+  facebook: { width: 1920, height: 1080, label: "16:9 1080p" },
 };
 
 const VALID = new Set<PlatformId>([
@@ -45,9 +45,9 @@ export function outputForQuality(
   const full = PLATFORM_OUTPUT[format];
   if (quality === "full") return full;
   return {
-    width: Math.round(full.width / 2),
-    height: Math.round(full.height / 2),
-    label: full.label.replace("4K", "HD"),
+    width: Math.max(360, Math.round(full.width * 0.67)),
+    height: Math.max(640, Math.round(full.height * 0.67)),
+    label: full.label.replace("1080p", "720p"),
   };
 }
 

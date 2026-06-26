@@ -39,17 +39,24 @@ function runFfmpeg(args: string[]): Promise<void> {
   });
 }
 
-/** Crop + scale raw segment to the selected social format. */
+/** Crop + scale raw segment to the selected social format (optional ASS burn-in). */
 export async function formatClipForPlatform(
   inputPath: string,
   outputPath: string,
   format: PlatformId,
   quality: RenderQuality,
+  subtitlesPath?: string | null,
 ): Promise<void> {
   const { width, height } = outputForQuality(format, quality);
-  const vf = buildCropScaleFilter(width, height);
-  const preset = quality === "full" ? "medium" : "fast";
-  const crf = quality === "full" ? "17" : "22";
+  let vf = buildCropScaleFilter(width, height);
+
+  if (subtitlesPath) {
+    const escaped = subtitlesPath.replace(/\\/g, "/").replace(/:/g, "\\:");
+    vf += `,subtitles='${escaped}'`;
+  }
+
+  const preset = quality === "full" ? "fast" : "ultrafast";
+  const crf = quality === "full" ? "20" : "23";
 
   await runFfmpeg([
     "-y",

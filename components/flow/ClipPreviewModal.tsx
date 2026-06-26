@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, Download, Loader2 } from "lucide-react";
@@ -42,6 +42,7 @@ export function ClipPreviewModal({
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState("");
+  const previewBlobRef = useRef<Blob | null>(null);
 
   const clipFormat = clip?.format || selectedFormat;
   const clipId = clip?.id;
@@ -73,6 +74,7 @@ export function ClipPreviewModal({
     setLoading(true);
     setPreviewError(null);
     setPreviewSrc(null);
+    previewBlobRef.current = null;
     setProgress(0);
     setProgressMsg(
       clientRender ? "Preparando renderização no navegador…" : "Renderizando prévia…",
@@ -93,7 +95,9 @@ export function ClipPreviewModal({
     )
       .then((blob) => {
         if (controller.signal.aborted) return;
+        previewBlobRef.current = blob;
         setPreviewSrc(URL.createObjectURL(blob));
+        setLoading(false);
       })
       .catch((err: Error) => {
         if (err.name !== "AbortError") {
@@ -143,6 +147,7 @@ export function ClipPreviewModal({
           setProgress(pct);
           setProgressMsg(msg);
         },
+        previewBlobRef.current,
       );
     } catch (err) {
       alert(err instanceof Error ? err.message : "Erro ao baixar o corte");
@@ -187,7 +192,7 @@ export function ClipPreviewModal({
           <div className="relative shrink-0 border-b border-line bg-black p-4">
             <div className="mb-3 flex items-center justify-between gap-2">
               <span className="font-mono text-[11px] uppercase tracking-wider text-white/40">
-                Prévia 4K • {aspectLabelForFormat(clipFormat)}
+                Prévia • {aspectLabelForFormat(clipFormat)}
               </span>
               <button
                 onClick={onClose}
@@ -289,7 +294,7 @@ export function ClipPreviewModal({
               <Download className="h-4 w-4" />
               {downloading
                 ? `Gerando vídeo… ${progress > 0 ? `${progress}%` : ""}`
-                : "Baixar este corte em 4K"}
+                : "Baixar este corte"}
             </Button>
           </div>
         </motion.div>

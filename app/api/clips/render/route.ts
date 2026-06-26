@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
         format,
         quality,
       });
+      if (captionLang) params.set("captionLang", captionLang);
+      if (highlightColor) params.set("highlightColor", highlightColor);
       const res = await fetch(`${workerUrl}/clip?${params}`, {
         cache: "no-store",
         signal: AbortSignal.timeout(280000),

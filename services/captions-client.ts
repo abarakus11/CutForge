@@ -5,8 +5,32 @@ import {
   parseHighlightColor,
   parseVtt,
   parseVttWords,
-  type CaptionCue,
 } from "@/lib/captions-core";
+
+async function fetchAssFromApi(
+  videoId: string,
+  clipStart: number,
+  clipEnd: number,
+  width: number,
+  height: number,
+  captionLang?: string | null,
+  highlightColor?: string | null,
+): Promise<string | null> {
+  const params = new URLSearchParams({
+    videoId,
+    start: String(clipStart),
+    end: String(clipEnd),
+    width: String(width),
+    height: String(height),
+    captionLang: captionLang || "auto",
+    highlightColor: highlightColor || "#FFFF00",
+  });
+
+  const res = await fetch(`/api/youtube/captions/ass?${params}`);
+  if (!res.ok) return null;
+  const text = await res.text();
+  return text.includes("Dialogue:") ? text : null;
+}
 
 async function fetchPlayerFromApi(videoId: string) {
   const res = await fetch(
@@ -50,11 +74,11 @@ async function downloadCaptionVtt(baseUrl: string): Promise<string> {
   return res.text();
 }
 
-/** Load captions in the browser via Innertube (Vercel-safe). */
+/** Load captions in the browser via API + Innertube fallback. */
 export async function loadCaptionsClient(
   videoId: string,
   preferredLang?: string | null,
-): Promise<{ cues: CaptionCue[]; language: string } | null> {
+): Promise<{ cues: import("@/lib/captions-core").CaptionCue[]; language: string } | null> {
   const player = await fetchPlayerFromApi(videoId);
   const tracks =
     player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
@@ -101,6 +125,17 @@ export async function buildClipAssClient(
   captionLang?: string | null,
   highlightColor?: string | null,
 ): Promise<string | null> {
+  const fromApi = await fetchAssFromApi(
+    videoId,
+    clipStart,
+    clipEnd,
+    width,
+    height,
+    captionLang,
+    highlightColor,
+  );
+  if (fromApi) return fromApi;
+
   const captions = await loadCaptionsClient(videoId, captionLang);
   if (!captions) return null;
 

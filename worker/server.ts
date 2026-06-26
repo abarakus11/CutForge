@@ -14,7 +14,9 @@ import {
 import {
   parsePlatformFormat,
   parseRenderQuality,
+  outputForQuality,
 } from "./platform";
+import { writeWorkerClipAss } from "./captions";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { tmpdir } from "os";
@@ -127,6 +129,8 @@ app.get("/clip", async (req, res) => {
   const end = Number(req.query.end);
   const format = parsePlatformFormat(String(req.query.format || ""));
   const quality = parseRenderQuality(String(req.query.quality || ""));
+  const captionLang = String(req.query.captionLang || "auto");
+  const highlightColor = String(req.query.highlightColor || "#FFFF00");
   if (!/^[\w-]{11}$/.test(videoId) || !Number.isFinite(start) || !Number.isFinite(end)) {
     return res.status(400).json({ error: "parâmetros inválidos" });
   }
@@ -146,7 +150,21 @@ app.get("/clip", async (req, res) => {
       forceKeyframesAtCuts: true,
     });
 
-    await formatClipForPlatform(raw, out, format, quality);
+    const { width, height } = outputForQuality(format, quality);
+    const assPath = await writeWorkerClipAss(
+      ytDlp,
+      videoId,
+      start,
+      end,
+      width,
+      height,
+      dir,
+      YT_FLAGS,
+      captionLang,
+      highlightColor,
+    );
+
+    await formatClipForPlatform(raw, out, format, quality, assPath);
 
     const buffer = await readFile(out);
     res.setHeader("Content-Type", "video/mp4");

@@ -12,6 +12,17 @@ const FORCE_CLIENT =
   typeof process !== "undefined" &&
   process.env.NEXT_PUBLIC_FORCE_CLIENT_RENDER === "1";
 
+export function triggerBlobDownload(filename: string, blob: Blob) {
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 2000);
+}
+
 function triggerDownload(filename: string, href: string) {
   const a = document.createElement("a");
   a.href = href;
@@ -76,14 +87,23 @@ async function fetchClipBlob(
   return res.blob();
 }
 
-/** Download a single clip as MP4. */
+/** Download a single clip as MP4. Reuses an existing blob when provided. */
 export async function downloadClip(
   clip: Clip,
   videoId: string,
   videoDuration?: number,
   captions?: CaptionSettings,
   onProgress?: (pct: number, message: string) => void,
+  existingBlob?: Blob | null,
 ) {
+  const filename = `${sanitize(clip.title)}.mp4`;
+
+  if (existingBlob && existingBlob.size > 0) {
+    onProgress?.(100, "Pronto!");
+    triggerBlobDownload(filename, existingBlob);
+    return;
+  }
+
   const blob = await fetchClipBlob(
     clip,
     videoId,
@@ -91,10 +111,7 @@ export async function downloadClip(
     captions,
     onProgress,
   );
-  const filename = `${sanitize(clip.title)}.mp4`;
-  const href = URL.createObjectURL(blob);
-  triggerDownload(filename, href);
-  setTimeout(() => URL.revokeObjectURL(href), 2000);
+  triggerBlobDownload(filename, blob);
 }
 
 /** Download every clip sequentially as individual MP4 files. */
