@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
       highlightColor,
     });
 
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
         "Content-Type": "video/mp4",
         "Content-Disposition": "inline",

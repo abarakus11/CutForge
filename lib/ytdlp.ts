@@ -29,7 +29,10 @@ export const YT_DLP_FLAGS = {
   extractorArgs: "youtube:player_client=android,web",
 } as const;
 
-type YtDlpFlags = Record<string, string | number | boolean | undefined>;
+type YtDlpFlags = Record<
+  string,
+  string | number | boolean | string[] | undefined
+>;
 
 /** yt-dlp wrapper with YouTube-friendly defaults applied to every call. */
 export function ytDlp(url: string, flags: YtDlpFlags = {}) {
