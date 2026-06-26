@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parsePlatformFormat, parseRenderQuality } from "@/lib/platform-output";
-import { parseHighlightColor } from "@/lib/captions";
+import { parseHighlightColor, parseCaptionFontSetting } from "@/lib/captions";
 import { renderClipToBuffer } from "@/lib/render-clip";
 
 export const runtime = "nodejs";
@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   const highlightColor = parseHighlightColor(
     searchParams.get("highlightColor"),
   );
+  const captionFont = parseCaptionFontSetting(searchParams.get("captionFont"));
 
   if (!videoId || !/^[\w-]{11}$/.test(videoId)) {
     return NextResponse.json({ error: "videoId inválido" }, { status: 400 });
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
       });
       if (captionLang) params.set("captionLang", captionLang);
       if (highlightColor) params.set("highlightColor", highlightColor);
+      if (captionFont) params.set("captionFont", captionFont);
       const res = await fetch(`${workerUrl}/clip?${params}`, {
         cache: "no-store",
         signal: AbortSignal.timeout(280000),
@@ -65,6 +67,7 @@ export async function GET(request: NextRequest) {
       quality,
       captionLang,
       highlightColor,
+      captionFont,
     });
 
     return new NextResponse(new Uint8Array(buffer), {

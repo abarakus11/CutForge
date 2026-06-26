@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { CAPTION_LANG_LABELS } from "@/config/constants";
+import { CAPTION_FONTS } from "@/lib/caption-fonts";
 import type { SubtitleTrack } from "@/types";
 import {
   downloadCaptionVttHttp,
@@ -10,6 +11,8 @@ import {
 import { watchUrl, ytDlp } from "@/lib/ytdlp";
 
 export * from "@/lib/captions-core";
+
+import { parseCaptionFont } from "@/lib/captions-core";
 
 import type { CaptionCue, WordCue } from "@/lib/captions-core";
 import {
@@ -240,7 +243,7 @@ function buildLangAttempts(
   return attempts;
 }
 
-/** Write ASS file for a clip; returns path or null if no captions. */
+/** Write ASS file for a clip via transcrição Whisper. */
 export async function writeClipAssFile(
   videoId: string,
   clipStart: number,
@@ -250,19 +253,20 @@ export async function writeClipAssFile(
   dir: string,
   captionLang?: string | null,
   highlightColor?: string,
+  captionFont?: string | null,
 ): Promise<string | null> {
-  const captions = await loadVideoCaptions(videoId, captionLang);
-  if (!captions) return null;
-
-  const ass = buildClipAss(
-    captions.cues,
+  const { buildTranscribedClipAss } = await import("@/lib/clip-captions");
+  const ass = await buildTranscribedClipAss(
+    videoId,
     clipStart,
     clipEnd,
     width,
     height,
-    { highlightColor: highlightColor || "#FFFF00" },
+    captionLang,
+    highlightColor,
+    captionFont,
   );
-  if (!ass.includes("Dialogue:")) return null;
+  if (!ass) return null;
 
   const assPath = join(dir, "subs.ass");
   await writeFile(assPath, ass, "utf-8");
@@ -272,4 +276,9 @@ export async function writeClipAssFile(
 /** Escape path for ffmpeg subtitles filter (Windows-safe). */
 export function escapeFfmpegSubPath(filePath: string): string {
   return filePath.replace(/\\/g, "/").replace(/:/g, "\\:");
+}
+
+/** Validate caption font id from query / UI. */
+export function parseCaptionFontSetting(value: string | null | undefined): string {
+  return parseCaptionFont(value, CAPTION_FONTS);
 }

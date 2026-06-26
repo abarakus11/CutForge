@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isVercelRuntime } from "@/lib/youtube-meta";
 import { parsePlatformFormat } from "@/lib/platform-output";
-import { parseHighlightColor } from "@/lib/captions";
+import { parseHighlightColor, parseCaptionFontSetting } from "@/lib/captions";
 import { renderClipToBuffer } from "@/lib/render-clip";
 
 export const runtime = "nodejs";
@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
   const highlightColor = parseHighlightColor(
     searchParams.get("highlightColor"),
   );
+  const captionFont = parseCaptionFontSetting(searchParams.get("captionFont"));
 
   if (!videoId || !/^[\w-]{11}$/.test(videoId)) {
     return NextResponse.json({ error: "videoId inválido" }, { status: 400 });
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
       videoDuration: Number.isFinite(videoDuration) ? videoDuration : undefined,
       captionLang,
       highlightColor,
+      captionFont,
     });
     const filename = `${sanitizeFilename(title)}.mp4`;
 

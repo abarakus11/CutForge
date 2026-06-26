@@ -24,7 +24,7 @@ function ffmpegBin(): string {
   }
 }
 
-function runFfmpeg(args: string[]): Promise<void> {
+export function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn(ffmpegBin(), args, { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";

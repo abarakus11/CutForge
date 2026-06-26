@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractClipThumbnail } from "@/lib/extract-thumbnail";
-import { parsePlatformFormat } from "@/lib/platform-output";
-import { isVercelRuntime } from "@/lib/youtube-meta";
+import { thumbnailTimestamp } from "@/lib/clip-thumbnail";
+import { parsePlatformFormat, PLATFORM_OUTPUT } from "@/lib/platform-output";
+import { fetchFromClipWorker } from "@/lib/worker-proxy";
+import { extractStoryboardThumbnail } from "@/lib/youtube-storyboard";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 120;
+
+function thumbDimensions(format: ReturnType<typeof parsePlatformFormat>) {
+  const base = PLATFORM_OUTPUT[format];
+  const width = 360;
+  const height = Math.round((width * base.height) / base.width);
+  return { width, height };
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -19,23 +29,28 @@ export async function GET(request: NextRequest) {
 
   const clipStart = Number.isFinite(start) ? start : 0;
   const clipEnd = Number.isFinite(end) ? end : clipStart + 30;
+  const at = thumbnailTimestamp(clipStart, clipEnd);
 
-  if (isVercelRuntime()) {
-    const thumbUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-    try {
-      const res = await fetch(thumbUrl, { cache: "force-cache" });
-      if (res.ok) {
-        const buffer = await res.arrayBuffer();
-        return new NextResponse(buffer, {
-          headers: {
-            "Content-Type": "image/jpeg",
-            "Cache-Control": "public, max-age=86400, immutable",
-          },
-        });
-      }
-    } catch {
-      /* fallback to server render */
-    }
+  const workerParams = new URLSearchParams({
+    videoId,
+    start: String(Math.floor(clipStart)),
+    end: String(Math.floor(clipEnd)),
+    format,
+    at: String(at),
+  });
+
+  const workerRes = await fetchFromClipWorker(
+    `/thumbnail?${workerParams}`,
+    90_000,
+  );
+  if (workerRes) {
+    const buffer = await workerRes.arrayBuffer();
+    return new NextResponse(buffer, {
+      headers: {
+        "Content-Type": "image/jpeg",
+        "Cache-Control": "public, max-age=3600",
+      },
+    });
   }
 
   try {
@@ -50,14 +65,33 @@ export async function GET(request: NextRequest) {
       headers: {
         "Content-Type": "image/jpeg",
         "Content-Length": String(buffer.length),
-        "Cache-Control": "public, max-age=86400, immutable",
+        "Cache-Control": "public, max-age=3600",
       },
     });
-  } catch (err) {
-    console.error("[clips/thumbnail]", err);
-    return NextResponse.json(
-      { error: "Não foi possível gerar a thumbnail" },
-      { status: 500 },
-    );
+  } catch {
+    /* local ffmpeg/yt-dlp indisponível — tenta storyboard */
   }
+
+  const { width, height } = thumbDimensions(format);
+  const storyboard = await extractStoryboardThumbnail(
+    videoId,
+    at,
+    width,
+    height,
+  );
+
+  if (storyboard) {
+    return new NextResponse(new Uint8Array(storyboard), {
+      headers: {
+        "Content-Type": "image/jpeg",
+        "Content-Length": String(storyboard.length),
+        "Cache-Control": "public, max-age=3600",
+      },
+    });
+  }
+
+  return NextResponse.json(
+    { error: "Não foi possível gerar a thumbnail" },
+    { status: 500 },
+  );
 }

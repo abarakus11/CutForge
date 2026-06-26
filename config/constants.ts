@@ -1,4 +1,8 @@
 import type { ClipTag, PlatformFormat, ProcessingStage } from "@/types";
+import { TRANSCRIPTION_LANGUAGES } from "@/lib/transcription-langs";
+import { CAPTION_FONTS } from "@/lib/caption-fonts";
+
+export { TRANSCRIPTION_LANGUAGES };
 
 /**
  * Target platforms the user can forge clips for.
@@ -50,7 +54,7 @@ export const PROCESSING_STAGES: ProcessingStage[] = [
   { label: "Analisando áudio", weight: 0.16 },
   { label: "Detectando momentos virais", weight: 0.24 },
   { label: "Separando assuntos", weight: 0.16 },
-  { label: "Criando legendas", weight: 0.18 },
+  { label: "Transcrevendo fala", weight: 0.18 },
   { label: "Gerando cortes", weight: 0.18 },
   { label: "Finalizando", weight: 0.08 },
 ];
@@ -90,33 +94,18 @@ export const CAPTION_HIGHLIGHT_COLORS = [
   { id: "red", label: "Vermelho", hex: "#FF3333" },
 ] as const;
 
+export { CAPTION_FONTS };
+
 export const DEFAULT_CAPTION_SETTINGS = {
   language: "auto",
   highlightColor: "#FFFF00",
+  fontFamily: "arial-black",
 } as const;
 
-/** Human-readable labels for common YouTube subtitle language codes. */
-export const CAPTION_LANG_LABELS: Record<string, string> = {
-  pt: "Português",
-  "pt-BR": "Português (Brasil)",
-  "pt-PT": "Português (Portugal)",
-  en: "Inglês",
-  "en-US": "Inglês (EUA)",
-  "en-GB": "Inglês (UK)",
-  es: "Espanhol",
-  fr: "Francês",
-  de: "Alemão",
-  it: "Italiano",
-  ja: "Japonês",
-  ko: "Coreano",
-  zh: "Chinês",
-  "zh-Hans": "Chinês (simplificado)",
-  "zh-Hant": "Chinês (tradicional)",
-  ru: "Russo",
-  ar: "Árabe",
-  hi: "Hindi",
-  auto: "Automático (idioma do vídeo)",
-};
+/** @deprecated */
+export const CAPTION_LANG_LABELS: Record<string, string> = Object.fromEntries(
+  TRANSCRIPTION_LANGUAGES.map((t) => [t.lang, t.label]),
+);
 
 /** Brand constants reused across metadata and UI. */
 export const BRAND = {

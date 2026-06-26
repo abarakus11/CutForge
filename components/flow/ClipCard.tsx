@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Play, Download, Flame } from "lucide-react";
 import type { CaptionSettings, Clip, PlatformId } from "@/types";
+import { clipThumbnailUrl, clipThumbnailApiUrl } from "@/lib/clip-thumbnail";
 import { TagBadge } from "@/components/ui/Badge";
 import { formatTimecode, formatDuration, formatScore } from "@/utils/format";
 import { downloadClip } from "@/utils/download";
@@ -28,8 +29,24 @@ export function ClipCard({
   captions,
   onPreview,
 }: ClipCardProps) {
+  const initialSrc = useMemo(
+    () =>
+      clipThumbnailUrl(
+        videoId,
+        clip.start,
+        clip.end,
+        clip.format || selectedFormat,
+      ),
+    [videoId, clip.start, clip.end, clip.format, selectedFormat],
+  );
+  const [src, setSrc] = useState(initialSrc);
   const [imgError, setImgError] = useState(false);
   const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    setSrc(initialSrc);
+    setImgError(false);
+  }, [initialSrc]);
 
   const handleDownload = async () => {
     if (downloading) return;
@@ -62,11 +79,24 @@ export function ClipCard({
         {!imgError ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={clip.thumbnail}
+            key={src}
+            src={src}
             alt={clip.title}
             loading="lazy"
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-            onError={() => setImgError(true)}
+            onError={() => {
+              const apiUrl = clipThumbnailApiUrl(
+                videoId,
+                clip.start,
+                clip.end,
+                clip.format || selectedFormat,
+              );
+              if (src !== apiUrl) {
+                setSrc(apiUrl);
+                return;
+              }
+              setImgError(true);
+            }}
           />
         ) : (
           <div className="h-full w-full bg-gradient-to-br from-ink-600 to-ink-500" />

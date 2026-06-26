@@ -1,233 +1,73 @@
-import { mkdir, readdir, readFile, writeFile } from "fs/promises";
+import { writeFile } from "fs/promises";
 import { join } from "path";
-import type { create as CreateYtDlp } from "youtube-dl-exec";
 import {
   buildClipAss,
-  mergeCues,
-  mergeWordCues,
+  parseCaptionFont,
   parseHighlightColor,
-  parseVtt,
-  parseVttWords,
-  type CaptionCue,
-  type WordCue,
+  resolveCaptionFontAssName,
 } from "../lib/captions-core";
+import { CAPTION_FONTS } from "../lib/caption-fonts";
+import { TRANSCRIPTION_LANGUAGES } from "../lib/transcription-langs";
+import { transcribeMediaFile } from "./transcribe";
 
-type YtDlpFn = ReturnType<typeof CreateYtDlp>;
+export { TRANSCRIPTION_LANGUAGES };
 
-function langScore(candidate: string, preferred: string): number {
-  const c = candidate.toLowerCase();
-  const p = preferred.toLowerCase();
-  if (c === p) return 100;
-  if (c.startsWith(p) || p.startsWith(c.split("-")[0])) return 80;
-  if (c.split("-")[0] === p.split("-")[0]) return 60;
-  return 0;
-}
-
-function wordsFromPlainCue(cue: CaptionCue): WordCue[] {
-  const parts = cue.text.split(/\s+/).filter(Boolean);
-  if (!parts.length) return [];
-  const dur = (cue.end - cue.start) / parts.length;
-  return parts.map((text, i) => ({
-    start: cue.start + i * dur,
-    end: cue.start + (i + 1) * dur,
-    text,
-  }));
-}
-
-async function downloadSubsFile(
-  ytDlp: YtDlpFn,
-  videoId: string,
-  lang: string,
-  auto: boolean,
-  dir: string,
-  flags: Record<string, string | boolean>,
-): Promise<string | null> {
-  await mkdir(dir, { recursive: true });
-
-  await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-    ...flags,
-    writeSubs: !auto,
-    writeAutoSubs: auto,
-    subLangs: [lang],
-    subFormat: "vtt",
-    skipDownload: true,
-    output: join(dir, "subs"),
-    quiet: true,
-  });
-
-  const files = await readdir(dir);
-  const sub = files.find((f) => f.endsWith(".vtt") || f.endsWith(".srt"));
-  return sub ? join(dir, sub) : null;
-}
-
-/** Write karaoke ASS subtitles for a clip segment (yt-dlp + captions-core). */
-export async function writeWorkerClipAss(
-  ytDlp: YtDlpFn,
-  videoId: string,
-  clipStart: number,
-  clipEnd: number,
+/** Gera legendas ASS via Whisper (áudio do corte) — sem YouTube. */
+export async function writeWorkerClipAssFromMedia(
+  mediaPath: string,
+  clipDuration: number,
   width: number,
   height: number,
-  dir: string,
-  ytFlags: Record<string, string | boolean>,
+  workDir: string,
   captionLang?: string | null,
   highlightColor?: string | null,
+  captionFont?: string | null,
 ): Promise<string | null> {
-  const subsDir = join(dir, "subs-cache");
-  const preferred =
-    captionLang && captionLang !== "auto" ? captionLang : "pt";
-
-  let meta: {
-    language?: string;
-    subtitles?: Record<string, unknown>;
-    automatic_captions?: Record<string, unknown>;
-  } | null = null;
-
   try {
-    meta = (await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-      ...ytFlags,
-      dumpSingleJson: true,
-    })) as typeof meta;
-  } catch {
+    const { cues } = await transcribeMediaFile(mediaPath, workDir, captionLang);
+    if (!cues.length) return null;
+
+    const hl = parseHighlightColor(highlightColor ?? undefined);
+    const fontName = resolveCaptionFontAssName(
+      parseCaptionFont(captionFont, CAPTION_FONTS),
+      CAPTION_FONTS,
+    );
+    const ass = buildClipAss(cues, 0, clipDuration, width, height, {
+      highlightColor: hl,
+      fontFamily: fontName,
+    });
+    if (!ass.includes("Dialogue:")) return null;
+
+    const assPath = join(workDir, "subs.ass");
+    await writeFile(assPath, ass, "utf-8");
+    return assPath;
+  } catch (err) {
+    console.error("[worker/captions] whisper falhou:", err);
     return null;
   }
-
-  const manual = Object.keys(meta?.subtitles || {}).map((lang) => ({
-    lang,
-    auto: false,
-  }));
-  const auto = Object.keys(meta?.automatic_captions || {}).map((lang) => ({
-    lang,
-    auto: true,
-  }));
-
-  const ranked = [...manual, ...auto].sort((a, b) => {
-    const scoreA = langScore(a.lang, preferred) + (a.auto ? 0 : 10);
-    const scoreB = langScore(b.lang, preferred) + (b.auto ? 0 : 10);
-    return scoreB - scoreA;
-  });
-
-  if (!ranked.length) {
-    ranked.push({ lang: preferred, auto: true });
-    ranked.push({ lang: "pt", auto: true });
-    ranked.push({ lang: "en", auto: true });
-  }
-
-  for (const attempt of ranked) {
-    try {
-      const subPath = await downloadSubsFile(
-        ytDlp,
-        videoId,
-        attempt.lang,
-        attempt.auto,
-        subsDir,
-        ytFlags,
-      );
-      if (!subPath) continue;
-
-      const content = await readFile(subPath, "utf-8");
-      const words = parseVttWords(content);
-      const cues =
-        words.length > 0
-          ? mergeWordCues(words)
-          : mergeCues(parseVtt(content));
-      if (!cues.length) continue;
-
-      const hl = parseHighlightColor(highlightColor ?? undefined);
-      const ass = buildClipAss(cues, clipStart, clipEnd, width, height, {
-        highlightColor: hl,
-      });
-      if (!ass.includes("Dialogue:")) continue;
-
-      const assPath = join(dir, "subs.ass");
-      await writeFile(assPath, ass, "utf-8");
-      return assPath;
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
 }
 
-export function escapeFfmpegSubPath(filePath: string): string {
-  return filePath.replace(/\\/g, "/").replace(/:/g, "\\:");
-}
-
-const LANG_LABELS: Record<string, string> = {
-  pt: "Português",
-  en: "Inglês",
-  es: "Espanhol",
-  fr: "Francês",
-  de: "Alemão",
-  it: "Italiano",
-  ja: "Japonês",
-  ko: "Coreano",
-  zh: "Chinês",
-  "zh-Hans": "Chinês (simplificado)",
-  "zh-Hant": "Chinês (tradicional)",
-  ar: "Árabe",
-  hi: "Hindi",
-  ru: "Russo",
-};
-
-function labelForLang(lang: string): string {
-  return LANG_LABELS[lang] || LANG_LABELS[lang.split("-")[0]] || lang;
-}
-
-/** List available subtitle languages via yt-dlp metadata. */
-export async function listWorkerCaptionLanguages(
-  ytDlp: YtDlpFn,
-  videoId: string,
-  ytFlags: Record<string, string | boolean>,
-): Promise<Array<{ lang: string; label: string; auto: boolean }>> {
-  const meta = (await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-    ...ytFlags,
-    dumpSingleJson: true,
-  })) as {
-    subtitles?: Record<string, unknown>;
-    automatic_captions?: Record<string, unknown>;
-  };
-
-  const manual = Object.keys(meta.subtitles || {}).map((lang) => ({
-    lang,
-    label: labelForLang(lang),
-    auto: false,
-  }));
-  const auto = Object.keys(meta.automatic_captions || {}).map((lang) => ({
-    lang,
-    label: `${labelForLang(lang)} (automática)`,
-    auto: true,
-  }));
-
-  return [...manual, ...auto];
-}
-
-/** Build ASS text for a clip (no ffmpeg). */
-export async function buildWorkerClipAssText(
-  ytDlp: YtDlpFn,
-  videoId: string,
-  clipStart: number,
-  clipEnd: number,
+export async function buildWorkerClipAssTextFromMedia(
+  mediaPath: string,
+  clipDuration: number,
   width: number,
   height: number,
-  dir: string,
-  ytFlags: Record<string, string | boolean>,
+  workDir: string,
   captionLang?: string | null,
   highlightColor?: string | null,
+  captionFont?: string | null,
 ): Promise<string | null> {
-  const assPath = await writeWorkerClipAss(
-    ytDlp,
-    videoId,
-    clipStart,
-    clipEnd,
+  const assPath = await writeWorkerClipAssFromMedia(
+    mediaPath,
+    clipDuration,
     width,
     height,
-    dir,
-    ytFlags,
+    workDir,
     captionLang,
     highlightColor,
+    captionFont,
   );
   if (!assPath) return null;
+  const { readFile } = await import("fs/promises");
   return readFile(assPath, "utf-8");
 }

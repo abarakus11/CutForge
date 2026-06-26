@@ -68,6 +68,8 @@ export interface CaptionSettings {
   language: string;
   /** Hex color for the spoken-word highlight, e.g. "#FFFF00". */
   highlightColor: string;
+  /** Caption font id from CAPTION_FONTS. */
+  fontFamily: string;
 }
 
 export interface SubtitleTrack {

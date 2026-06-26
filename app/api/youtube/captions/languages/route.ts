@@ -1,35 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseYouTubeId } from "@/services/youtube";
-import { listSubtitleLanguages } from "@/lib/captions";
+import { TRANSCRIPTION_LANGUAGES } from "@/config/constants";
 import { fetchFromClipWorker } from "@/lib/worker-proxy";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 30;
 
-export async function GET(request: NextRequest) {
-  const videoId =
-    request.nextUrl.searchParams.get("videoId")?.trim() ||
-    parseYouTubeId(request.nextUrl.searchParams.get("url")?.trim() || "");
-
-  if (!videoId || !/^[\w-]{11}$/.test(videoId)) {
-    return NextResponse.json({ error: "videoId inválido" }, { status: 400 });
+/** Idiomas disponíveis para transcrição Whisper (não legendas do YouTube). */
+export async function GET(_request: NextRequest) {
+  const workerRes = await fetchFromClipWorker("/captions/languages");
+  if (workerRes) {
+    return NextResponse.json(await workerRes.json());
   }
 
-  try {
-    const workerRes = await fetchFromClipWorker(
-      `/captions/languages?videoId=${encodeURIComponent(videoId)}`,
-    );
-    if (workerRes) {
-      return NextResponse.json(await workerRes.json());
-    }
-
-    const tracks = await listSubtitleLanguages(videoId);
-    return NextResponse.json({ tracks });
-  } catch (err) {
-    console.error("[captions/languages]", err);
-    return NextResponse.json(
-      { error: "Não foi possível listar as legendas disponíveis." },
-      { status: 500 },
-    );
-  }
+  return NextResponse.json({
+    tracks: TRANSCRIPTION_LANGUAGES.map((t) => ({
+      lang: t.lang,
+      label: t.label,
+      auto: t.lang === "auto",
+    })),
+  });
 }

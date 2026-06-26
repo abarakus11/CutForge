@@ -61,6 +61,7 @@ async function fetchClipBlob(
       quality: "full",
       captionLang: captions?.language || "auto",
       highlightColor: captions?.highlightColor || "#FFFF00",
+      captionFont: captions?.fontFamily || "arial-black",
       onProgress,
     });
   }
@@ -73,6 +74,7 @@ async function fetchClipBlob(
     format,
     captionLang: captions?.language || "auto",
     highlightColor: captions?.highlightColor || "#FFFF00",
+    captionFont: captions?.fontFamily || "arial-black",
   });
   if (videoDuration && videoDuration > 0) {
     params.set("duration", String(Math.floor(videoDuration)));
@@ -147,6 +149,7 @@ export async function renderClipBlob(
       quality,
       captionLang: captions?.language || "auto",
       highlightColor: captions?.highlightColor || "#FFFF00",
+      captionFont: captions?.fontFamily || "arial-black",
       onProgress,
     });
   }
@@ -159,6 +162,7 @@ export async function renderClipBlob(
     quality,
     captionLang: captions?.language || "auto",
     highlightColor: captions?.highlightColor || "#FFFF00",
+    captionFont: captions?.fontFamily || "arial-black",
   });
   if (videoDuration && videoDuration > 0) {
     params.set("duration", String(Math.floor(videoDuration)));

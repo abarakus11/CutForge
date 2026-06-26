@@ -1,6 +1,5 @@
 /**
- * Clip worker — usa yt-dlp do projeto principal.
- * Deploy: Render (render.yaml) ou local + tunnel.
+ * Clip worker — yt-dlp + ffmpeg + Whisper (legendas próprias).
  */
 import express from "express";
 import { create as createYtDlp } from "youtube-dl-exec";
@@ -12,14 +11,21 @@ import {
   rawClipPath,
 } from "./clip-render";
 import {
+  extractThumbnailFromStream,
+  thumbnailTimestamp,
+} from "./thumbnail";
+import { resolveVideoStreamUrl } from "./streams";
+import {
   parsePlatformFormat,
   parseRenderQuality,
   outputForQuality,
 } from "./platform";
 import {
-  buildWorkerClipAssText,
-  listWorkerCaptionLanguages,
+  buildWorkerClipAssTextFromMedia,
+  TRANSCRIPTION_LANGUAGES,
+  writeWorkerClipAssFromMedia,
 } from "./captions";
+import { transcribeMediaFile } from "./transcribe";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { tmpdir } from "os";
@@ -64,11 +70,37 @@ const ytDlp = createYtDlp(resolveYtDlpBin());
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
 
+app.use((_req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  next();
+});
+
+app.options("*", (_req, res) => res.sendStatus(204));
+
 const YT_FLAGS = {
   noPlaylist: true,
   noWarnings: true,
   extractorArgs: "youtube:player_client=android,web",
 } as const;
+
+async function downloadClipSection(
+  videoId: string,
+  start: number,
+  end: number,
+  outputPath: string,
+): Promise<void> {
+  await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
+    ...YT_FLAGS,
+    downloadSections: `*${Math.floor(start)}-${Math.floor(end)}`,
+    format:
+      "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best[height<=1080]/best",
+    mergeOutputFormat: "mp4",
+    output: outputPath,
+    forceKeyframesAtCuts: true,
+  });
+}
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -79,65 +111,50 @@ app.get("/streams", async (req, res) => {
   }
 
   try {
-    const info = (await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-      ...YT_FLAGS,
-      dumpSingleJson: true,
-    })) as {
-      formats?: Array<{
-        url?: string;
-        vcodec?: string;
-        acodec?: string;
-        height?: number;
-        ext?: string;
-      }>;
-    };
-
-    const formats = (info.formats || []).filter((f) => f.url);
-    const muxed = formats
-      .filter((f) => f.vcodec !== "none" && f.acodec !== "none" && f.ext === "mp4")
-      .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
-
-    if (muxed?.url) {
-      return res.json({
-        videoUrl: muxed.url,
-        height: muxed.height || 720,
-        combined: true,
-      });
-    }
-
-    const video = formats
-      .filter((f) => f.vcodec !== "none" && f.acodec === "none")
-      .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
-    const audio = formats.find((f) => f.acodec !== "none" && f.vcodec === "none");
-
-    if (!video?.url || !audio?.url) {
-      return res.status(502).json({ error: "streams indisponíveis" });
-    }
-
-    return res.json({
-      videoUrl: video.url,
-      audioUrl: audio.url,
-      height: video.height || 1080,
-      combined: false,
-    });
+    const url = await resolveVideoStreamUrl(ytDlp, videoId);
+    return res.json({ videoUrl: url, combined: true });
   } catch (err) {
     console.error("[worker/streams]", err);
     return res.status(500).json({ error: "falha ao obter streams" });
   }
 });
 
-app.get("/captions/languages", async (req, res) => {
+app.get("/captions/languages", (_req, res) => {
+  res.json({
+    tracks: TRANSCRIPTION_LANGUAGES.map((t) => ({
+      lang: t.lang,
+      label: t.label,
+      auto: t.lang === "auto",
+    })),
+  });
+});
+
+app.get("/transcribe", async (req, res) => {
   const videoId = String(req.query.videoId || "");
-  if (!/^[\w-]{11}$/.test(videoId)) {
-    return res.status(400).json({ error: "videoId inválido" });
+  const start = Number(req.query.start);
+  const end = Number(req.query.end);
+  const captionLang = String(req.query.captionLang || "auto");
+
+  if (!/^[\w-]{11}$/.test(videoId) || !Number.isFinite(start) || !Number.isFinite(end)) {
+    return res.status(400).json({ error: "parâmetros inválidos" });
   }
 
+  const dir = await mkdtemp(join(tmpdir(), "transcribe-"));
+  const raw = rawClipPath(dir);
+
   try {
-    const tracks = await listWorkerCaptionLanguages(ytDlp, videoId, YT_FLAGS);
-    return res.json({ tracks });
+    await downloadClipSection(videoId, start, end, raw);
+    const result = await transcribeMediaFile(raw, dir, captionLang);
+    res.json({
+      language: result.language,
+      words: result.words,
+      cues: result.cues,
+    });
   } catch (err) {
-    console.error("[worker/captions/languages]", err);
-    return res.status(500).json({ error: "falha ao listar legendas" });
+    console.error("[worker/transcribe]", err);
+    res.status(500).json({ error: "falha na transcrição" });
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 });
 
@@ -149,35 +166,73 @@ app.get("/captions/ass", async (req, res) => {
   const height = Number(req.query.height);
   const captionLang = String(req.query.captionLang || "auto");
   const highlightColor = String(req.query.highlightColor || "#FFFF00");
+  const captionFont = String(req.query.captionFont || "arial-black");
 
   if (!/^[\w-]{11}$/.test(videoId) || !Number.isFinite(start) || !Number.isFinite(end)) {
     return res.status(400).json({ error: "parâmetros inválidos" });
   }
-  if (!width || !height) {
-    return res.status(400).json({ error: "width/height obrigatórios" });
-  }
+
+  const dims =
+    width > 0 && height > 0
+      ? { width, height }
+      : { width: 720, height: 1280 };
 
   const dir = await mkdtemp(join(tmpdir(), "ass-"));
+  const raw = rawClipPath(dir);
+  const duration = end - start;
+
   try {
-    const ass = await buildWorkerClipAssText(
-      ytDlp,
-      videoId,
-      start,
-      end,
-      width,
-      height,
+    await downloadClipSection(videoId, start, end, raw);
+    const ass = await buildWorkerClipAssTextFromMedia(
+      raw,
+      duration,
+      dims.width,
+      dims.height,
       dir,
-      YT_FLAGS,
       captionLang,
       highlightColor,
+      captionFont,
     );
     if (!ass || !ass.includes("Dialogue:")) {
-      return res.status(404).json({ error: "legendas indisponíveis" });
+      return res.status(404).json({ error: "nenhuma fala detectada no trecho" });
     }
     res.type("text/plain; charset=utf-8").send(ass);
   } catch (err) {
     console.error("[worker/captions/ass]", err);
     res.status(500).json({ error: "falha ao gerar legendas" });
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+});
+
+app.get("/thumbnail", async (req, res) => {
+  const videoId = String(req.query.videoId || "");
+  const start = Number(req.query.start);
+  const end = Number(req.query.end);
+  const format = parsePlatformFormat(String(req.query.format || ""));
+
+  if (!/^[\w-]{11}$/.test(videoId) || !Number.isFinite(start) || !Number.isFinite(end)) {
+    return res.status(400).json({ error: "parâmetros inválidos" });
+  }
+
+  const at = thumbnailTimestamp(start, end);
+  const dir = await mkdtemp(join(tmpdir(), "thumb-"));
+  const frame = join(dir, "frame.jpg");
+
+  try {
+    const streamUrl = await resolveVideoStreamUrl(ytDlp, videoId);
+    const buffer = await extractThumbnailFromStream(
+      streamUrl,
+      at,
+      format,
+      frame,
+    );
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+    res.send(buffer);
+  } catch (err) {
+    console.error("[worker/thumbnail]", err);
+    res.status(500).json({ error: "falha ao gerar thumbnail" });
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
@@ -191,6 +246,7 @@ app.get("/clip", async (req, res) => {
   const quality = parseRenderQuality(String(req.query.quality || ""));
   const captionLang = String(req.query.captionLang || "auto");
   const highlightColor = String(req.query.highlightColor || "#FFFF00");
+  const captionFont = String(req.query.captionFont || "arial-black");
   if (!/^[\w-]{11}$/.test(videoId) || !Number.isFinite(start) || !Number.isFinite(end)) {
     return res.status(400).json({ error: "parâmetros inválidos" });
   }
@@ -198,30 +254,21 @@ app.get("/clip", async (req, res) => {
   const dir = await mkdtemp(join(tmpdir(), "clip-"));
   const raw = rawClipPath(dir);
   const out = formattedClipPath(dir);
+  const duration = end - start;
 
   try {
-    await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-      ...YT_FLAGS,
-      downloadSections: `*${Math.floor(start)}-${Math.floor(end)}`,
-      format:
-        "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best[height<=1080]/best",
-      mergeOutputFormat: "mp4",
-      output: raw,
-      forceKeyframesAtCuts: true,
-    });
+    await downloadClipSection(videoId, start, end, raw);
 
     const { width, height } = outputForQuality(format, quality);
-    const assPath = await writeWorkerClipAss(
-      ytDlp,
-      videoId,
-      start,
-      end,
+    const assPath = await writeWorkerClipAssFromMedia(
+      raw,
+      duration,
       width,
       height,
       dir,
-      YT_FLAGS,
       captionLang,
       highlightColor,
+      captionFont,
     );
 
     await formatClipForPlatform(raw, out, format, quality, assPath);

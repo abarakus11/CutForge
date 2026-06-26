@@ -11,11 +11,13 @@ import {
   ArrowRight,
   Subtitles,
   Palette,
+  Type,
   Loader2,
   type LucideIcon,
 } from "lucide-react";
 import type { CaptionSettings, PlatformId, VideoMeta } from "@/types";
 import {
+  CAPTION_FONTS,
   CAPTION_HIGHLIGHT_COLORS,
   PLATFORM_FORMATS,
 } from "@/config/constants";
@@ -63,7 +65,7 @@ export function StepFormat({
   const [selectedFormat, setSelectedFormat] = useState<PlatformId | null>(null);
   const [langOptions, setLangOptions] = useState<
     { lang: string; label: string }[]
-  >([{ lang: "auto", label: "Automático (idioma do vídeo)" }]);
+  >([{ lang: "auto", label: "Detectar automaticamente" }]);
   const [loadingLangs, setLoadingLangs] = useState(true);
 
   useEffect(() => {
@@ -72,11 +74,7 @@ export function StepFormat({
     fetchSubtitleLanguages(video.id)
       .then((tracks) => {
         if (cancelled) return;
-        const opts = [
-          { lang: "auto", label: "Automático (idioma do vídeo)" },
-          ...tracks.map((t) => ({ lang: t.lang, label: t.label })),
-        ];
-        setLangOptions(opts);
+        setLangOptions(tracks.map((t) => ({ lang: t.lang, label: t.label })));
       })
       .catch(() => {})
       .finally(() => {
@@ -160,7 +158,7 @@ export function StepFormat({
       <div className="rounded-2xl border border-line bg-white/[0.03] p-5 backdrop-blur-xl">
         <div className="mb-4 flex items-center gap-2 text-white">
           <Subtitles className="h-4 w-4 text-spark-violet" />
-          <h3 className="text-[15px] font-medium">Legendas</h3>
+          <h3 className="text-[15px] font-medium">Legendas por IA</h3>
         </div>
 
         <div className="space-y-5">
@@ -169,7 +167,7 @@ export function StepFormat({
               htmlFor="caption-lang"
               className="mb-2 block text-xs font-medium uppercase tracking-wider text-white/40"
             >
-              Idioma da legenda
+              Idioma da transcrição
             </label>
             <div className="relative">
               <select
@@ -190,6 +188,49 @@ export function StepFormat({
               {loadingLangs && (
                 <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-white/40" />
               )}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <Type className="h-3.5 w-3.5 text-white/40" />
+              <span className="text-xs font-medium uppercase tracking-wider text-white/40">
+                Tipo de letra
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {CAPTION_FONTS.map((font) => {
+                const selected = captions.fontFamily === font.id;
+                return (
+                  <button
+                    key={font.id}
+                    type="button"
+                    onClick={() =>
+                      onCaptionsChange({ ...captions, fontFamily: font.id })
+                    }
+                    className={cn(
+                      "flex items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition-all",
+                      selected
+                        ? "border-white/40 bg-white/10 text-white"
+                        : "border-line bg-white/[0.03] text-white/60 hover:border-white/20 hover:text-white",
+                    )}
+                  >
+                    <span
+                      className="truncate"
+                      style={{ fontFamily: font.ass }}
+                    >
+                      {font.label}
+                    </span>
+                    <span
+                      className="ml-2 shrink-0 text-base font-bold text-white/80"
+                      style={{ fontFamily: font.ass }}
+                      aria-hidden
+                    >
+                      Aa
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -231,14 +272,15 @@ export function StepFormat({
               })}
             </div>
             <p className="mt-2 text-xs text-white/35">
-              Cada palavra fica{" "}
+              A IA ouve o áudio de cada corte e cria as legendas — não usa legendas
+              do YouTube. Cada palavra fica{" "}
               <span
                 className="font-medium"
                 style={{ color: captions.highlightColor }}
               >
                 destacada
               </span>{" "}
-              no momento em que é falada no vídeo.
+              no momento em que é falada.
             </p>
           </div>
         </div>

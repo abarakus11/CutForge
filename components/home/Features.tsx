@@ -22,7 +22,7 @@ const FEATURES = [
   { icon: GraduationCap, title: "Ensinamentos", desc: "Isola lições e insights que entregam valor real." },
   { icon: MessageCircleQuestion, title: "Perguntas e respostas", desc: "Separa as melhores perguntas e respostas da conversa." },
   { icon: Shuffle, title: "Mudanças de assunto", desc: "Reconhece transições para cortes coerentes e completos." },
-  { icon: Captions, title: "Legendas automáticas", desc: "Gera legendas sincronizadas, prontas para edição." },
+  { icon: Captions, title: "Legendas por IA", desc: "Transcreve a fala de cada corte e gera legendas karaokê automaticamente." },
   { icon: Languages, title: "Tradução multilíngue", desc: "Estrutura pronta para traduzir legendas para vários idiomas." },
 ];
 

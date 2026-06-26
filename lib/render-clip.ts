@@ -27,6 +27,7 @@ interface RenderClipOptions {
   videoDuration?: number;
   captionLang?: string | null;
   highlightColor?: string | null;
+  captionFont?: string | null;
 }
 
 /** Prefer up to 4K source from YouTube. */
@@ -251,12 +252,14 @@ export async function renderClipToBuffer({
   videoDuration: knownDuration,
   captionLang,
   highlightColor,
+  captionFont,
 }: RenderClipOptions): Promise<Buffer> {
   const hl = parseHighlightColor(highlightColor ?? undefined);
   const lang = captionLang || "auto";
+  const font = captionFont || "arial-black";
 
   const cacheKey = clipCacheKey([
-    "v9-subs-v4",
+    "v11-whisper-subs",
     videoId,
     String(Math.floor(start)),
     String(Math.floor(end)),
@@ -264,6 +267,7 @@ export async function renderClipToBuffer({
     quality,
     lang,
     hl,
+    font,
   ]);
 
   const cached = getCachedClip(cacheKey);
@@ -297,6 +301,7 @@ export async function renderClipToBuffer({
       dir,
       captionLang,
       hl,
+      font,
     );
 
     await reformatForPlatform(

@@ -16,6 +16,8 @@ export interface CaptionCue {
 export interface CaptionStyleOptions {
   highlightColor: string;
   baseColor?: string;
+  /** ASS Fontname, e.g. "Arial Black". */
+  fontFamily?: string;
 }
 
 interface VideoSubtitleMeta {
@@ -454,6 +456,7 @@ export function buildClipAss(
   const marginH = Math.round(width * 0.06);
   const baseAss = hexToAssColor(style.baseColor || "#FFFFFF");
   const highlightAss = hexToAssColor(style.highlightColor);
+  const fontName = sanitizeAssFontName(style.fontFamily || "Arial Black");
 
   const clipped = cues
     .filter((c) => c.end > clipStart && c.start < clipEnd)
@@ -485,7 +488,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,Arial Black,${fontSize},${baseAss},${highlightAss},&H00000000,&HC0000000,1,0,0,0,100,100,0,0,1,5,2,2,${marginH},${marginH},${marginV},1
+Style: Karaoke,${fontName},${fontSize},${baseAss},${highlightAss},&H00000000,&HC0000000,1,0,0,0,100,100,0,0,1,5,2,2,${marginH},${marginH},${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -512,4 +515,27 @@ export function parseHighlightColor(value: string | null | undefined): string {
   const v = value.trim();
   if (/^#[0-9A-Fa-f]{6}$/.test(v)) return v.toUpperCase();
   return "#FFFF00";
+}
+
+function sanitizeAssFontName(name: string): string {
+  const cleaned = name.replace(/[^\w\s-]/g, "").trim().slice(0, 48);
+  return cleaned || "Arial Black";
+}
+
+/** Resolve caption font id to ASS font name. */
+export function resolveCaptionFontAssName(
+  fontId: string | null | undefined,
+  fonts: ReadonlyArray<{ id: string; ass: string }>,
+): string {
+  const found = fonts.find((f) => f.id === fontId);
+  return sanitizeAssFontName(found?.ass || "Arial Black");
+}
+
+/** Validate caption font id from user input. */
+export function parseCaptionFont(
+  value: string | null | undefined,
+  fonts: ReadonlyArray<{ id: string }>,
+): string {
+  if (!value) return fonts[0]?.id || "arial-black";
+  return fonts.some((f) => f.id === value) ? value : fonts[0]?.id || "arial-black";
 }

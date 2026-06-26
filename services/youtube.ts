@@ -2,6 +2,7 @@
  * YouTube service layer.
  */
 import type { CaptionSettings, PlatformId, VideoMeta } from "@/types";
+import { clipThumbnailUrl } from "@/lib/clip-thumbnail";
 import { shouldUseClientRender } from "@/lib/render-env";
 import { prefetchFfmpegClient } from "@/services/clip-render-client";
 import { fetchYouTubeDurationClient } from "@/services/youtube-duration";
@@ -54,13 +55,7 @@ export function thumbnailForClip(
   end: number,
   format: PlatformId,
 ): string {
-  const params = new URLSearchParams({
-    videoId,
-    start: String(Math.floor(start)),
-    end: String(Math.floor(end)),
-    format,
-  });
-  return `/api/clips/thumbnail?${params}`;
+  return clipThumbnailUrl(videoId, start, end, format);
 }
 
 /** Preview URL for a rendered clip segment (MP4). */
@@ -80,6 +75,7 @@ export function previewUrlForClip(
     quality: "full",
     captionLang: captions?.language || "auto",
     highlightColor: captions?.highlightColor || "#FFFF00",
+    captionFont: captions?.fontFamily || "arial-black",
   });
   if (videoDuration && videoDuration > 0) {
     params.set("duration", String(Math.floor(videoDuration)));

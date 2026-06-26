@@ -17,6 +17,7 @@ export interface ClientRenderOptions {
   quality?: RenderQuality;
   captionLang?: string | null;
   highlightColor?: string | null;
+  captionFont?: string | null;
   onProgress?: (pct: number, message: string) => void;
 }
 
@@ -210,6 +211,7 @@ export async function renderClipClient(
     quality = "full",
     captionLang,
     highlightColor,
+    captionFont,
     onProgress,
   } = options;
 
@@ -230,6 +232,7 @@ export async function renderClipClient(
   });
   if (captionLang) serverParams.set("captionLang", captionLang);
   if (highlightColor) serverParams.set("highlightColor", highlightColor);
+  if (captionFont) serverParams.set("captionFont", captionFont);
 
   try {
     onProgress?.(8, "Processando no servidor…");
@@ -265,7 +268,7 @@ export async function renderClipClient(
   const hl = parseHighlightColor(highlightColor ?? undefined);
   const outputName = "output.mp4";
 
-  onProgress?.(10, "Preparando legendas…");
+  onProgress?.(10, "Transcrevendo fala do corte…");
   let assContent: string | null = null;
   try {
     assContent = await buildClipAssClient(
@@ -276,6 +279,7 @@ export async function renderClipClient(
       height,
       captionLang,
       hl,
+      captionFont,
     );
   } catch {
     assContent = null;

@@ -77,6 +77,9 @@ interface PlayerResponse {
       }>;
     };
   };
+  storyboards?: {
+    playerStoryboardSpecRenderer?: { spec?: string };
+  };
 }
 
 function watchUrl(videoId: string): string {
@@ -252,7 +255,7 @@ async function fetchViaDataApi(
   }
 }
 
-async function fetchPlayerResponse(videoId: string): Promise<PlayerResponse> {
+export async function fetchPlayerResponse(videoId: string): Promise<PlayerResponse> {
   const direct = await fetchInnertubePlayer(videoId, INNERTUBE_FALLBACK_KEY);
   if (direct?.videoDetails?.lengthSeconds) return direct;
 

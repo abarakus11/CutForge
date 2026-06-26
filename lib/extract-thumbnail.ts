@@ -9,18 +9,13 @@ import {
   PLATFORM_OUTPUT,
 } from "@/lib/platform-output";
 import { getCachedStreamUrl, getFfmpegPath } from "@/lib/ytdlp";
+import { thumbnailTimestamp } from "@/lib/clip-thumbnail";
 
 interface ThumbnailOptions {
   videoId: string;
   start: number;
   end: number;
   format: PlatformId;
-}
-
-/** Pick a frame a few seconds into the cut (avoids hard cuts). */
-export function thumbnailTimestamp(start: number, end: number): number {
-  const offset = Math.min(3, Math.floor((end - start) / 4));
-  return Math.floor(start + Math.max(1, offset));
 }
 
 function thumbDimensions(format: PlatformId): { width: number; height: number } {
@@ -61,12 +56,19 @@ export async function extractClipThumbnail({
   end,
   format,
 }: ThumbnailOptions): Promise<Buffer> {
-  const at = thumbnailTimestamp(start, end);
-  const cacheKey = clipCacheKey(["thumb", "v1", videoId, String(at), format]);
+  const cacheKey = clipCacheKey([
+    "thumb",
+    "v3",
+    videoId,
+    String(Math.floor(start)),
+    String(Math.floor(end)),
+    format,
+  ]);
 
   const cached = getCachedClip(cacheKey);
   if (cached) return cached;
 
+  const at = thumbnailTimestamp(start, end);
   const streamUrl = await getStreamUrl(videoId);
   const { width, height } = thumbDimensions(format);
   const vf = buildCropScaleFilter(width, height);
