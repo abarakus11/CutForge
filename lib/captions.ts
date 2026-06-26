@@ -2,6 +2,11 @@ import { mkdir, readdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { CAPTION_LANG_LABELS } from "@/config/constants";
 import type { SubtitleTrack } from "@/types";
+import {
+  downloadCaptionVttHttp,
+  fetchYouTubeCaptionTracksHttp,
+  isVercelRuntime,
+} from "@/lib/youtube-meta";
 import { watchUrl, ytDlp } from "@/lib/ytdlp";
 
 export interface WordCue {
@@ -384,6 +389,15 @@ function labelForLang(lang: string): string {
 export async function listSubtitleLanguages(
   videoId: string,
 ): Promise<SubtitleTrack[]> {
+  if (isVercelRuntime()) {
+    const httpTracks = await fetchYouTubeCaptionTracksHttp(videoId);
+    return httpTracks.map((t) => ({
+      lang: t.lang,
+      label: t.auto ? `${t.label} (automática)` : t.label,
+      auto: t.auto,
+    }));
+  }
+
   const meta = (await ytDlp(watchUrl(videoId), {
     dumpSingleJson: true,
   })) as VideoSubtitleMeta;
@@ -474,6 +488,48 @@ function buildLangAttempts(
   return attempts;
 }
 
+async function loadVideoCaptionsHttp(
+  videoId: string,
+  preferredLang?: string | null,
+): Promise<CachedCaptions | null> {
+  const tracks = await fetchYouTubeCaptionTracksHttp(videoId);
+  if (!tracks.length) return null;
+
+  const preferred =
+    preferredLang && preferredLang !== "auto"
+      ? preferredLang
+      : tracks[0]?.lang || "pt";
+
+  const ranked = [...tracks].sort((a, b) => {
+    const scoreA = langScore(a.lang, preferred) + (a.auto ? 0 : 10);
+    const scoreB = langScore(b.lang, preferred) + (b.auto ? 0 : 10);
+    return scoreB - scoreA;
+  });
+
+  for (const track of ranked) {
+    if (!track.baseUrl) continue;
+    try {
+      const content = await downloadCaptionVttHttp(track.baseUrl);
+      const words = parseVttWords(content);
+      const cues =
+        words.length > 0
+          ? mergeWordCues(words)
+          : mergeCues(parseVtt(content));
+      if (!cues.length) continue;
+
+      return {
+        language: track.lang,
+        cues,
+        words: words.length > 0 ? words : cues.flatMap(wordsFromPlainCue),
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 /** Load and cache normalized captions for a video. */
 export async function loadVideoCaptions(
   videoId: string,
@@ -483,6 +539,12 @@ export async function loadVideoCaptions(
   const cacheKey = `${CAPTION_PARSE_VERSION}:${langKey}:${videoId}`;
   const cached = captionStore.get(cacheKey);
   if (cached) return cached;
+
+  if (isVercelRuntime()) {
+    const result = await loadVideoCaptionsHttp(videoId, preferredLang);
+    if (result) captionStore.set(cacheKey, result);
+    return result;
+  }
 
   const meta = (await ytDlp(watchUrl(videoId), {
     dumpSingleJson: true,
