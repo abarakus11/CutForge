@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    serverComponentsExternalPackages: ["@distube/ytdl-core"],
+    serverComponentsExternalPackages: ["@distube/ytdl-core", "ffmpeg-static"],
     outputFileTracingIncludes: {
       "/api/clips/render": ["./node_modules/ffmpeg-static/**/*"],
       "/api/clips/preview": ["./node_modules/ffmpeg-static/**/*"],

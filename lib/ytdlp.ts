@@ -1,5 +1,7 @@
+import { chmodSync, existsSync } from "fs";
 import { join } from "path";
 import { create as createYtDlp } from "youtube-dl-exec";
+import ffmpegStatic from "ffmpeg-static";
 import {
   YTDLP_CLIP_FORMAT_ATTEMPTS,
   YTDLP_STREAM_FORMAT,
@@ -17,25 +19,31 @@ export function getYtDlpPath() {
   );
 }
 
-import ffmpegStatic from "ffmpeg-static";
-import { chmodSync, existsSync } from "fs";
-
 export function getFfmpegPath() {
-  if (typeof ffmpegStatic === "string" && ffmpegStatic) {
-    if (existsSync(ffmpegStatic)) {
-      try {
-        chmodSync(ffmpegStatic, 0o755);
-      } catch {
-        // permissão já ok
-      }
+  const fromNodeModules = binPath(
+    "ffmpeg-static",
+    process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
+  );
+
+  if (existsSync(fromNodeModules)) {
+    try {
+      chmodSync(fromNodeModules, 0o755);
+    } catch {
+      // permissão já ok
+    }
+    return fromNodeModules;
+  }
+
+  if (typeof ffmpegStatic === "string" && ffmpegStatic && existsSync(ffmpegStatic)) {
+    try {
+      chmodSync(ffmpegStatic, 0o755);
+    } catch {
+      // permissão já ok
     }
     return ffmpegStatic;
   }
 
-  return binPath(
-    "ffmpeg-static",
-    process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
-  );
+  return fromNodeModules;
 }
 
 const rawYtDlp = createYtDlp(getYtDlpPath());

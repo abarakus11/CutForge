@@ -167,12 +167,14 @@ async function extractRawSegment(
   const rawPath = join(dir, "raw.mp4");
   const rawTemplate = join(dir, "raw.%(ext)s");
 
-  try {
-    await downloadSectionWithYtDlp(videoId, start, end, rawTemplate);
-    const rawFile = await findRawFile(dir);
-    if (rawFile) return rawFile;
-  } catch (err) {
-    console.warn("[render-clip] yt-dlp section failed:", err);
+  if (!isVercelRuntime()) {
+    try {
+      await downloadSectionWithYtDlp(videoId, start, end, rawTemplate);
+      const rawFile = await findRawFile(dir);
+      if (rawFile) return rawFile;
+    } catch (err) {
+      console.warn("[render-clip] yt-dlp section failed:", err);
+    }
   }
 
   try {
@@ -182,8 +184,12 @@ async function extractRawSegment(
     console.warn("[render-clip] innertube streams failed, trying yt-dlp URL:", err);
   }
 
-  await downloadSectionWithFfmpeg(videoId, start, end, rawPath);
-  return rawPath;
+  if (!isVercelRuntime()) {
+    await downloadSectionWithFfmpeg(videoId, start, end, rawPath);
+    return rawPath;
+  }
+
+  throw new Error("Não foi possível extrair o trecho do vídeo");
 }
 
 async function reformatForPlatform(
