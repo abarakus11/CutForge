@@ -10,6 +10,8 @@ export interface YouTubeVideoMeta {
 
 export interface YouTubeVideoMetaResolved extends YouTubeVideoMeta {
   id: string;
+  /** True when title/channel came from oEmbed but duration must be resolved client-side. */
+  needsClientDuration?: boolean;
 }
 
 export interface YouTubeCaptionTrack {
@@ -25,6 +27,13 @@ const UA =
 const INNERTUBE_FALLBACK_KEY = "AIzaSyAO_FJ2SlbwU7RmtKx_thw_vz3mce3NZSY";
 
 const INNERTUBE_CLIENTS = [
+  {
+    clientName: "ANDROID",
+    clientVersion: "20.10.38",
+    androidSdkVersion: 30,
+    hl: "en",
+    gl: "US",
+  },
   {
     clientName: "WEB",
     clientVersion: "2.20240221.09.00",
@@ -49,13 +58,6 @@ const INNERTUBE_CLIENTS = [
     hl: "pt",
     gl: "BR",
   },
-  {
-    clientName: "ANDROID",
-    clientVersion: "19.09.37",
-    androidSdkVersion: 30,
-    hl: "pt",
-    gl: "BR",
-  },
 ];
 
 interface PlayerResponse {
@@ -75,6 +77,10 @@ interface PlayerResponse {
       }>;
     };
   };
+}
+
+function watchUrl(videoId: string): string {
+  return `https://www.youtube.com/watch?v=${videoId}`;
 }
 
 function extractJsonBlock(html: string, marker: string): unknown | null {
@@ -102,9 +108,19 @@ function extractJsonBlock(html: string, marker: string): unknown | null {
   return null;
 }
 
+function parseIso8601Duration(iso: string): number {
+  const match = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+  return (
+    Number(match[1] || 0) * 3600 +
+    Number(match[2] || 0) * 60 +
+    Number(match[3] || 0)
+  );
+}
+
 async function fetchWatchPage(videoId: string): Promise<string | null> {
   try {
-    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+    const res = await fetch(watchUrl(videoId), {
       headers: {
         "User-Agent": UA,
         "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -140,6 +156,8 @@ async function fetchInnertubePlayer(
             "Content-Type": "application/json",
             "User-Agent": UA,
             "Accept-Language": "pt-BR,pt;q=0.9",
+            Origin: "https://www.youtube.com",
+            Referer: watchUrl(videoId),
           },
           body: JSON.stringify({
             context: { client },
@@ -152,7 +170,12 @@ async function fetchInnertubePlayer(
       if (!res.ok) continue;
 
       const data = (await res.json()) as PlayerResponse;
-      if (data.videoDetails?.lengthSeconds) return data;
+      if (
+        data.videoDetails?.lengthSeconds &&
+        data.playabilityStatus?.status !== "LOGIN_REQUIRED"
+      ) {
+        return data;
+      }
     } catch {
       continue;
     }
@@ -161,12 +184,78 @@ async function fetchInnertubePlayer(
   return null;
 }
 
+async function fetchOEmbed(
+  videoId: string,
+): Promise<{ title: string; channel: string } | null> {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(watchUrl(videoId))}&format=json`,
+      {
+        headers: { "User-Agent": UA },
+        cache: "no-store",
+      },
+    );
+
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as {
+      title?: string;
+      author_name?: string;
+    };
+
+    if (!data.title) return null;
+
+    return {
+      title: data.title,
+      channel: data.author_name || "YouTube",
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchViaDataApi(
+  videoId: string,
+): Promise<YouTubeVideoMetaResolved | null> {
+  const key = process.env.YOUTUBE_API_KEY?.trim();
+  if (!key) return null;
+
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${key}`,
+      { cache: "no-store" },
+    );
+
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as {
+      items?: Array<{
+        snippet?: { title?: string; channelTitle?: string };
+        contentDetails?: { duration?: string };
+      }>;
+    };
+
+    const item = data.items?.[0];
+    if (!item?.snippet?.title) return null;
+
+    const duration = parseIso8601Duration(item.contentDetails?.duration || "");
+    if (!duration) return null;
+
+    return {
+      id: videoId,
+      title: item.snippet.title,
+      channel: item.snippet.channelTitle || "YouTube",
+      duration,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchPlayerResponse(videoId: string): Promise<PlayerResponse> {
-  // 1. Innertube direto — funciona na Vercel sem scrape da página
   const direct = await fetchInnertubePlayer(videoId, INNERTUBE_FALLBACK_KEY);
   if (direct?.videoDetails?.lengthSeconds) return direct;
 
-  // 2. Fallback: scrape da página (pode falhar em IPs de datacenter)
   const html = await fetchWatchPage(videoId);
   if (html) {
     const apiKey = apiKeyFromHtml(html);
@@ -274,38 +363,61 @@ function* idVariants(id: string): Generator<string> {
   }
 }
 
-async function tryInnertubeId(id: string): Promise<PlayerResponse | null> {
-  return fetchInnertubePlayer(id, INNERTUBE_FALLBACK_KEY);
+async function tryResolveVariant(
+  variant: string,
+): Promise<YouTubeVideoMetaResolved | null> {
+  const fromApi = await fetchViaDataApi(variant);
+  if (fromApi) return fromApi;
+
+  const player = await fetchInnertubePlayer(variant, INNERTUBE_FALLBACK_KEY);
+  if (player?.videoDetails?.lengthSeconds) {
+    return playerToMeta(variant, player);
+  }
+
+  const oembed = await fetchOEmbed(variant);
+  if (!oembed) return null;
+
+  const html = await fetchWatchPage(variant);
+  if (html) {
+    const embedded = extractJsonBlock(
+      html,
+      "ytInitialPlayerResponse",
+    ) as PlayerResponse | null;
+
+    if (embedded?.videoDetails?.lengthSeconds) {
+      return {
+        id: variant,
+        title: embedded.videoDetails?.title?.trim() || oembed.title,
+        channel: embedded.videoDetails?.author?.trim() || oembed.channel,
+        duration: Number(embedded.videoDetails.lengthSeconds),
+      };
+    }
+  }
+
+  return {
+    id: variant,
+    title: oembed.title,
+    channel: oembed.channel,
+    duration: 0,
+    needsClientDuration: true,
+  };
 }
 
 /**
- * Resolve canonical ID + metadata in one pass (Innertube only — Vercel-safe).
- * Fixes l/I typos (e.g. tRLiw7wwli8 → tRLiw7wwIi8).
+ * Resolve canonical ID + metadata (oEmbed / Data API / Innertube).
+ * On Vercel, Innertube is often blocked — oEmbed + client duration is used.
  */
 export async function resolveAndFetchYouTubeMeta(
   rawId: string,
 ): Promise<YouTubeVideoMetaResolved> {
   for (const variant of idVariants(rawId)) {
-    const player = await tryInnertubeId(variant);
-    if (!player?.videoDetails?.lengthSeconds) continue;
+    const resolved = await tryResolveVariant(variant);
+    if (!resolved) continue;
 
     if (variant !== rawId) {
       console.info(`[youtube] ID corrigido: ${rawId} → ${variant}`);
     }
-    return playerToMeta(variant, player);
-  }
-
-  // Último recurso: scrape da página para cada variante
-  for (const variant of idVariants(rawId)) {
-    try {
-      const data = await fetchPlayerResponse(variant);
-      if (variant !== rawId) {
-        console.info(`[youtube] ID corrigido (fallback): ${rawId} → ${variant}`);
-      }
-      return playerToMeta(variant, data);
-    } catch {
-      continue;
-    }
+    return resolved;
   }
 
   throw new Error("Não foi possível ler os dados do vídeo no YouTube");

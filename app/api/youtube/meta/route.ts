@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     let title: string;
     let channel: string;
     let duration: number;
+    let needsClientDuration = false;
 
     if (isVercelRuntime()) {
       const resolved = await resolveAndFetchYouTubeMeta(rawId);
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
       title = resolved.title;
       channel = resolved.channel;
       duration = resolved.duration;
+      needsClientDuration = Boolean(resolved.needsClientDuration);
     } else {
       try {
         const info = (await ytDlp(watchUrl(rawId), {
@@ -57,7 +59,12 @@ export async function GET(request: NextRequest) {
         title = resolved.title;
         channel = resolved.channel;
         duration = resolved.duration;
+        needsClientDuration = Boolean(resolved.needsClientDuration);
       }
+    }
+
+    if (!needsClientDuration && (!duration || duration <= 0)) {
+      throw new Error("Não foi possível ler os dados do vídeo no YouTube");
     }
 
     return NextResponse.json({
@@ -65,8 +72,9 @@ export async function GET(request: NextRequest) {
       url: watchUrl(videoId),
       title,
       channel,
-      duration: Math.floor(duration),
+      duration: needsClientDuration ? 0 : Math.floor(duration),
       thumbnail: thumbnailFor(videoId),
+      needsClientDuration,
     });
   } catch (err) {
     console.error("[youtube/meta]", err);

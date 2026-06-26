@@ -2,6 +2,7 @@
  * YouTube service layer.
  */
 import type { CaptionSettings, PlatformId, VideoMeta } from "@/types";
+import { fetchYouTubeDurationClient } from "@/services/youtube-duration";
 
 const YT_PATTERNS: RegExp[] = [
   /(?:youtube\.com\/watch\?(?:.*&)?v=)([\w-]{11})/i,
@@ -124,5 +125,13 @@ export async function fetchVideoMeta(input: string): Promise<VideoMeta> {
     throw new Error(data.error || "Link do YouTube inválido");
   }
 
-  return res.json() as Promise<VideoMeta>;
+  const data = (await res.json()) as VideoMeta & {
+    needsClientDuration?: boolean;
+  };
+
+  if (data.needsClientDuration || !data.duration) {
+    data.duration = await fetchYouTubeDurationClient(data.id);
+  }
+
+  return data;
 }
