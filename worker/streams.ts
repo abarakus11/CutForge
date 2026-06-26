@@ -1,24 +1,26 @@
+import { pickYtDlpStreamUrls, type StreamUrls } from "../lib/stream-pick";
+
 const YT_FLAGS = {
   noPlaylist: true,
   noWarnings: true,
   extractorArgs: "youtube:player_client=android,web",
 } as const;
 
-const streamCache = new Map<string, { url: string; at: number }>();
+const streamCache = new Map<string, { streams: StreamUrls; at: number }>();
 const STREAM_TTL_MS = 30 * 60 * 1000;
 
 type YtDlpClient = {
   (url: string, flags?: Record<string, unknown>): Promise<unknown>;
 };
 
-/** Resolve a direct stream URL for ffmpeg (muxed mp4 preferred). */
-export async function resolveVideoStreamUrl(
+/** Resolve the best YouTube streams for ffmpeg (up to 4K, separate A/V when possible). */
+export async function resolveBestStreams(
   ytDlp: YtDlpClient,
   videoId: string,
-): Promise<string> {
+): Promise<StreamUrls> {
   const cached = streamCache.get(videoId);
   if (cached && Date.now() - cached.at < STREAM_TTL_MS) {
-    return cached.url;
+    return cached.streams;
   }
 
   const info = (await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
@@ -34,24 +36,18 @@ export async function resolveVideoStreamUrl(
     }>;
   };
 
-  const formats = (info.formats || []).filter((f) => f.url);
-  const muxed = formats
-    .filter((f) => f.vcodec !== "none" && f.acodec !== "none" && f.ext === "mp4")
-    .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
+  const picked = pickYtDlpStreamUrls(info.formats || []);
+  if (!picked) throw new Error("streams indisponíveis");
 
-  if (muxed?.url) {
-    streamCache.set(videoId, { url: muxed.url, at: Date.now() });
-    return muxed.url;
-  }
+  streamCache.set(videoId, { streams: picked, at: Date.now() });
+  return picked;
+}
 
-  const video = formats
-    .filter((f) => f.vcodec !== "none" && f.acodec === "none")
-    .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
-
-  if (video?.url) {
-    streamCache.set(videoId, { url: video.url, at: Date.now() });
-    return video.url;
-  }
-
-  throw new Error("streams indisponíveis");
+/** Back-compat: direct video URL for thumbnails. */
+export async function resolveVideoStreamUrl(
+  ytDlp: YtDlpClient,
+  videoId: string,
+): Promise<string> {
+  const streams = await resolveBestStreams(ytDlp, videoId);
+  return streams.videoUrl;
 }

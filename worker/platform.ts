@@ -45,9 +45,9 @@ export function outputForQuality(
   const full = PLATFORM_OUTPUT[format];
   if (quality === "full") return full;
   return {
-    width: Math.max(360, Math.round(full.width * 0.67)),
-    height: Math.max(640, Math.round(full.height * 0.67)),
-    label: full.label.replace("1080p", "720p"),
+    width: Math.max(540, Math.round(full.width * 0.85)),
+    height: Math.max(960, Math.round(full.height * 0.85)),
+    label: full.label.replace("1080p", "900p"),
   };
 }
 

@@ -91,7 +91,7 @@ export function ClipPreviewModal({
         setProgress(pct);
         setProgressMsg(msg);
       },
-      "preview",
+      "full",
     )
       .then((blob) => {
         if (controller.signal.aborted) return;

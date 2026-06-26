@@ -14,7 +14,8 @@ import {
   extractThumbnailFromStream,
   thumbnailTimestamp,
 } from "./thumbnail";
-import { resolveVideoStreamUrl } from "./streams";
+import { resolveBestStreams, resolveVideoStreamUrl } from "./streams";
+import { YTDLP_CLIP_FORMAT_ATTEMPTS } from "../lib/video-quality";
 import {
   parsePlatformFormat,
   parseRenderQuality,
@@ -91,15 +92,27 @@ async function downloadClipSection(
   end: number,
   outputPath: string,
 ): Promise<void> {
-  await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
-    ...YT_FLAGS,
-    downloadSections: `*${Math.floor(start)}-${Math.floor(end)}`,
-    format:
-      "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best[height<=1080]/best",
-    mergeOutputFormat: "mp4",
-    output: outputPath,
-    forceKeyframesAtCuts: true,
-  });
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const section = `*${Math.floor(start)}-${Math.floor(end)}`;
+  let lastError: Error | null = null;
+
+  for (const format of YTDLP_CLIP_FORMAT_ATTEMPTS) {
+    try {
+      await ytDlp(url, {
+        ...YT_FLAGS,
+        downloadSections: section,
+        format,
+        mergeOutputFormat: "mp4",
+        output: outputPath,
+        forceKeyframesAtCuts: true,
+      });
+      return;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  throw lastError ?? new Error("falha ao baixar trecho em alta qualidade");
 }
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -111,8 +124,8 @@ app.get("/streams", async (req, res) => {
   }
 
   try {
-    const url = await resolveVideoStreamUrl(ytDlp, videoId);
-    return res.json({ videoUrl: url, combined: true });
+    const streams = await resolveBestStreams(ytDlp, videoId);
+    return res.json(streams);
   } catch (err) {
     console.error("[worker/streams]", err);
     return res.status(500).json({ error: "falha ao obter streams" });

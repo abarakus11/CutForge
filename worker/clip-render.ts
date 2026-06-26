@@ -7,6 +7,7 @@ import {
   type PlatformId,
   type RenderQuality,
 } from "./platform";
+import { encodeSettingsForQuality } from "../lib/video-quality";
 
 function ffmpegBin(): string {
   if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
@@ -55,8 +56,7 @@ export async function formatClipForPlatform(
     vf += `,ass='${escaped}'`;
   }
 
-  const preset = quality === "full" ? "fast" : "ultrafast";
-  const crf = quality === "full" ? "20" : "23";
+  const { preset, crf, audioBitrate } = encodeSettingsForQuality(quality);
 
   await runFfmpeg([
     "-y",
@@ -77,7 +77,7 @@ export async function formatClipForPlatform(
     "-c:a",
     "aac",
     "-b:a",
-    quality === "full" ? "256k" : "192k",
+    audioBitrate,
     "-movflags",
     "+faststart",
     outputPath,

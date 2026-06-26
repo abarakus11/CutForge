@@ -1,5 +1,9 @@
 import { join } from "path";
 import { create as createYtDlp } from "youtube-dl-exec";
+import {
+  YTDLP_CLIP_FORMAT_ATTEMPTS,
+  YTDLP_STREAM_FORMAT,
+} from "@/lib/video-quality";
 
 function binPath(...segments: string[]) {
   return join(process.cwd(), "node_modules", ...segments);
@@ -50,15 +54,9 @@ const STREAM_URL_TTL_MS = 30 * 60 * 1000;
 const streamUrlCache = new Map<string, { url: string; at: number }>();
 
 /** Prefer up to 4K — H.264 first, then best available codec. */
-export const YTDLP_BEST_FORMAT_ATTEMPTS = [
-  "bestvideo[vcodec^=avc1][height<=2160]+bestaudio[ext=m4a]/bestvideo[vcodec^=avc1][height<=2160]+bestaudio",
-  "bestvideo[height<=2160][vcodec^=avc1]+bestaudio/bestvideo[height<=2160]+bestaudio",
-  "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best",
-  "bestvideo+bestaudio/best",
-];
+export const YTDLP_BEST_FORMAT_ATTEMPTS = [...YTDLP_CLIP_FORMAT_ATTEMPTS];
 
-export const YTDLP_STREAM_FORMAT =
-  "bestvideo[height<=2160][vcodec^=avc1]+bestaudio/bestvideo[height<=2160]+bestaudio/best[height<=2160]/best";
+export { YTDLP_STREAM_FORMAT };
 
 /** Cached direct stream URL (up to 4K) for ffmpeg extraction. */
 export async function getCachedStreamUrl(videoId: string): Promise<string> {

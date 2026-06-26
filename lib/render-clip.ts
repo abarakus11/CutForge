@@ -9,6 +9,7 @@ import {
   outputForQuality,
   type RenderQuality,
 } from "@/lib/platform-output";
+import { encodeSettingsForQuality } from "@/lib/video-quality";
 import { escapeFfmpegSubPath, parseHighlightColor, writeClipAssFile } from "@/lib/captions";
 import {
   getCachedStreamUrl,
@@ -187,8 +188,7 @@ async function reformatForPlatform(
     vf += `,ass='${escapeFfmpegSubPath(subtitlesPath)}'`;
   }
 
-  const preset = quality === "full" ? "medium" : "fast";
-  const crf = quality === "full" ? "17" : "22";
+  const { preset, crf, audioBitrate } = encodeSettingsForQuality(quality);
 
   await runFfmpeg([
     "-y",
@@ -211,7 +211,7 @@ async function reformatForPlatform(
     "-c:a",
     "aac",
     "-b:a",
-    "256k",
+    audioBitrate,
     "-movflags",
     "+faststart",
     outputPath,
@@ -259,7 +259,7 @@ export async function renderClipToBuffer({
   const font = captionFont || "arial-black";
 
   const cacheKey = clipCacheKey([
-    "v11-whisper-subs",
+    "v12-hq-source",
     videoId,
     String(Math.floor(start)),
     String(Math.floor(end)),

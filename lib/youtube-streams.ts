@@ -6,7 +6,7 @@ import {
   INNERTUBE_FALLBACK_KEY,
   type InnertubePlayerResponse,
 } from "@/lib/innertube-shared";
-import { pickStreamUrls, type StreamUrls } from "@/lib/stream-pick";
+import { pickStreamUrls, pickYtDlpStreamUrls, type StreamUrls } from "@/lib/stream-pick";
 import {
   fetchInnertubeWithVisitor,
   fetchVisitorData,
@@ -111,31 +111,7 @@ async function streamsFromYtDlp(videoId: string): Promise<StreamUrls | null> {
     }>;
   };
 
-  const formats = (info.formats || []).filter((f) => f.url);
-  const muxed = formats
-    .filter((f) => f.vcodec !== "none" && f.acodec !== "none")
-    .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
-  if (muxed?.url) {
-    return {
-      videoUrl: muxed.url,
-      height: muxed.height || 720,
-      combined: true,
-    };
-  }
-
-  const video = formats
-    .filter((f) => f.vcodec !== "none" && f.acodec === "none")
-    .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
-  const audio = formats.find((f) => f.acodec !== "none" && f.vcodec === "none");
-  if (video?.url && audio?.url) {
-    return {
-      videoUrl: video.url,
-      audioUrl: audio.url,
-      height: video.height || 1080,
-      combined: false,
-    };
-  }
-  return null;
+  return pickYtDlpStreamUrls(info.formats || []);
 }
 
 /** Resolve direct YouTube stream URLs on the server (Node.js). */

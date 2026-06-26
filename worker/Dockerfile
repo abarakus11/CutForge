@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3 
 
 WORKDIR /app
 
-COPY lib/captions-core.ts lib/transcription-langs.ts ./lib/
+COPY lib/captions-core.ts lib/transcription-langs.ts lib/video-quality.ts lib/stream-pick.ts ./lib/
 COPY worker/package.json ./worker/
 RUN cd worker && npm install
 

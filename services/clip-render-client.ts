@@ -94,6 +94,10 @@ function buildFfmpegArgs(
   const videoProxy = proxyStreamUrl(streams.videoUrl);
   const headers =
     "Referer: https://www.youtube.com/\\r\\nOrigin: https://www.youtube.com\\r\\n";
+  const { preset, crf, audioBitrate } =
+    quality === "full"
+      ? { preset: "fast", crf: "18", audioBitrate: "256k" }
+      : { preset: "ultrafast", crf: "24", audioBitrate: "160k" };
 
   const base: string[] = [
     "-protocol_whitelist",
@@ -118,13 +122,13 @@ function buildFfmpegArgs(
       "-c:v",
       "libx264",
       "-preset",
-      "ultrafast",
+      preset,
       "-crf",
-      quality === "full" ? "22" : "26",
+      crf,
       "-c:a",
       "aac",
       "-b:a",
-      "192k",
+      audioBitrate,
       "-movflags",
       "+faststart",
       outputName,
@@ -157,13 +161,13 @@ function buildFfmpegArgs(
     "-c:v",
     "libx264",
     "-preset",
-    "ultrafast",
+    preset,
     "-crf",
-    quality === "full" ? "22" : "26",
+    crf,
     "-c:a",
     "aac",
     "-b:a",
-    "192k",
+    audioBitrate,
     "-movflags",
     "+faststart",
     "-shortest",
