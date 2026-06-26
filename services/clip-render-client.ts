@@ -204,30 +204,34 @@ export async function renderClipClient(
     throw new Error("Corte muito curto para renderizar");
   }
 
-  onProgress?.(5, "Obtendo stream do YouTube…");
+  onProgress?.(5, "Gerando corte…");
 
-  const workerUrl = process.env.NEXT_PUBLIC_CLIP_WORKER_URL?.replace(/\/$/, "");
-  if (workerUrl) {
-    onProgress?.(8, "Gerando corte no servidor de vídeo…");
-    const params = new URLSearchParams({
-      videoId,
-      start: String(range.start),
-      end: String(range.end),
+  const serverParams = new URLSearchParams({
+    videoId,
+    start: String(range.start),
+    end: String(range.end),
+    format,
+  });
+  if (captionLang) serverParams.set("captionLang", captionLang);
+  if (highlightColor) serverParams.set("highlightColor", highlightColor);
+
+  try {
+    onProgress?.(8, "Processando no servidor…");
+    const serverRes = await fetch(`/api/clips/render?${serverParams}`, {
+      signal: AbortSignal.timeout(300000),
     });
-    const res = await fetch(`${workerUrl}/clip?${params}`);
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(data.error || "Falha ao gerar corte no worker");
+    if (serverRes.ok) {
+      onProgress?.(100, "Pronto!");
+      return serverRes.blob();
     }
-    onProgress?.(100, "Pronto!");
-    return res.blob();
+  } catch {
+    // fallback para render no navegador
   }
 
+  onProgress?.(10, "Obtendo stream do YouTube…");
   const streams = await getYouTubeStreamUrls(videoId).catch((err) => {
     throw new Error(
-      err instanceof Error
-        ? `${err.message}. Na Vercel é preciso configurar CLIP_WORKER_URL — veja worker/README.md`
-        : "Não foi possível obter o stream do vídeo",
+      err instanceof Error ? err.message : "Não foi possível obter o stream do vídeo",
     );
   });
 

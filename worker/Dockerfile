@@ -11,5 +11,6 @@ RUN npm install
 COPY worker/server.ts ./
 
 ENV PORT=3001
+ENV YT_DLP_PATH=/usr/local/bin/yt-dlp
 EXPOSE 3001
 CMD ["npx", "tsx", "server.ts"]

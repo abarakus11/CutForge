@@ -11,7 +11,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "worker": "npx tsx worker/server.ts",
+    "worker:install": "npm install --prefix worker"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
@@ -25,7 +27,9 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "youtube-dl-exec": "^3.1.8",
-    "youtubei.js": "^17.2.0"
+    "youtube-po-token-generator": "^0.6.0",
+    "youtubei.js": "^17.2.0",
+    "ytdl-core-enhanced": "^2.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.13",

@@ -1,29 +1,60 @@
 /**
- * Clip worker — deploy on Render/Railway/Fly (has ffmpeg + yt-dlp).
- * Set CLIP_WORKER_URL on Vercel to this service URL.
+ * Clip worker — usa yt-dlp do projeto principal.
+ * Deploy: Render (render.yaml) ou local + tunnel.
  */
 import express from "express";
-import { spawn } from "child_process";
+import { create as createYtDlp } from "youtube-dl-exec";
+import { accessSync } from "fs";
 import { mkdtemp, readFile, rm } from "fs/promises";
-import { join } from "path";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { tmpdir } from "os";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const rootDir = join(__dirname, "..");
+
+function resolveYtDlpBin(): string {
+  if (process.env.YT_DLP_PATH) return process.env.YT_DLP_PATH;
+
+  const candidates = [
+    join(
+      rootDir,
+      "node_modules",
+      "youtube-dl-exec",
+      "bin",
+      process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
+    ),
+    join(
+      __dirname,
+      "node_modules",
+      "youtube-dl-exec",
+      "bin",
+      process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp",
+    ),
+    "yt-dlp",
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate === "yt-dlp") return candidate;
+    try {
+      accessSync(candidate);
+      return candidate;
+    } catch {
+      // try next
+    }
+  }
+  return "yt-dlp";
+}
+
+const ytDlp = createYtDlp(resolveYtDlpBin());
 const app = express();
 const PORT = Number(process.env.PORT || 3001);
 
-function ytDlp(args: string[]): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    let err = "";
-    proc.stdout.on("data", (c) => (out += c));
-    proc.stderr.on("data", (c) => (err += c));
-    proc.on("close", (code) => {
-      if (code === 0) resolve(out.trim());
-      else reject(new Error(err || `yt-dlp exit ${code}`));
-    });
-  });
-}
+const YT_FLAGS = {
+  noPlaylist: true,
+  noWarnings: true,
+  extractorArgs: "youtube:player_client=android,web",
+} as const;
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -34,15 +65,17 @@ app.get("/streams", async (req, res) => {
   }
 
   try {
-    const json = await ytDlp([
-      `https://www.youtube.com/watch?v=${videoId}`,
-      "-J",
-      "--no-playlist",
-      "--extractor-args",
-      "youtube:player_client=android,web",
-    ]);
-    const info = JSON.parse(json) as {
-      formats?: Array<{ url?: string; vcodec?: string; acodec?: string; height?: number; ext?: string }>;
+    const info = (await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
+      ...YT_FLAGS,
+      dumpSingleJson: true,
+    })) as {
+      formats?: Array<{
+        url?: string;
+        vcodec?: string;
+        acodec?: string;
+        height?: number;
+        ext?: string;
+      }>;
     };
 
     const formats = (info.formats || []).filter((f) => f.url);
@@ -74,7 +107,7 @@ app.get("/streams", async (req, res) => {
       combined: false,
     });
   } catch (err) {
-    console.error(err);
+    console.error("[worker/streams]", err);
     return res.status(500).json({ error: "falha ao obter streams" });
   }
 });
@@ -91,25 +124,22 @@ app.get("/clip", async (req, res) => {
   const out = join(dir, "clip.mp4");
 
   try {
-    await ytDlp([
-      `https://www.youtube.com/watch?v=${videoId}`,
-      "--download-sections",
-      `*${start}-${end}`,
-      "-f",
-      "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
-      "--merge-output-format",
-      "mp4",
-      "-o",
-      out,
-      "--no-playlist",
-      "--force-keyframes-at-cuts",
-    ]);
+    await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
+      ...YT_FLAGS,
+      downloadSections: `*${Math.floor(start)}-${Math.floor(end)}`,
+      format:
+        "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best[height<=1080]/best",
+      mergeOutputFormat: "mp4",
+      output: out,
+      forceKeyframesAtCuts: true,
+    });
 
     const buffer = await readFile(out);
     res.setHeader("Content-Type", "video/mp4");
+    res.setHeader("Content-Disposition", "attachment; filename=clip.mp4");
     res.send(buffer);
   } catch (err) {
-    console.error(err);
+    console.error("[worker/clip]", err);
     res.status(500).json({ error: "falha ao gerar corte" });
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -117,5 +147,5 @@ app.get("/clip", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`clip-worker on :${PORT}`);
+  console.log(`[clip-worker] http://localhost:${PORT}`);
 });

@@ -17,9 +17,7 @@ export async function GET(request: NextRequest) {
     if (!streams) {
       return NextResponse.json(
         {
-          error:
-            "Não foi possível obter o stream do vídeo. Configure CLIP_WORKER_URL na Vercel (veja worker/README.md).",
-          needsWorker: true,
+          error: "Não foi possível obter o stream do vídeo.",
         },
         { status: 502 },
       );
