@@ -17,7 +17,13 @@ export function getYtDlpPath() {
   );
 }
 
+import ffmpegStatic from "ffmpeg-static";
+
 export function getFfmpegPath() {
+  if (typeof ffmpegStatic === "string" && ffmpegStatic) {
+    return ffmpegStatic;
+  }
+
   return binPath(
     "ffmpeg-static",
     process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",

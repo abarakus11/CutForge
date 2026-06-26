@@ -11,7 +11,7 @@ import { formatTimecode, formatScore, formatDuration } from "@/utils/format";
 import { downloadClip } from "@/utils/download";
 import { renderClipBlob } from "@/utils/download";
 import { shouldUseClientRender } from "@/lib/render-env";
-import { prefetchFfmpegClient } from "@/services/clip-render-client";
+import { prefetchFfmpegClient, youtubeEmbedPreviewUrl } from "@/services/clip-render-client";
 import {
   aspectLabelForFormat,
   modalWidthClassForFormat,
@@ -40,6 +40,7 @@ export function ClipPreviewModal({
   const [loading, setLoading] = useState(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [embedSrc, setEmbedSrc] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState("");
   const previewBlobRef = useRef<Blob | null>(null);
@@ -74,6 +75,9 @@ export function ClipPreviewModal({
     setLoading(true);
     setPreviewError(null);
     setPreviewSrc(null);
+    setEmbedSrc(
+      youtubeEmbedPreviewUrl(video.id, clipStart, clipEnd),
+    );
     previewBlobRef.current = null;
     setProgress(0);
     setProgressMsg("Gerando prévia…");
@@ -97,12 +101,7 @@ export function ClipPreviewModal({
         setPreviewSrc(URL.createObjectURL(blob));
         setLoading(false);
       })
-      .catch((err: Error) => {
-        if (err.name !== "AbortError") {
-          setPreviewError(
-            err.message || "Não foi possível carregar a prévia em 4K.",
-          );
-        }
+      .catch(() => {
         setLoading(false);
       })
       .finally(() => clearTimeout(timeout));
@@ -163,8 +162,8 @@ export function ClipPreviewModal({
   if (!mounted || !clip) return null;
 
   const frameStyle = playerFrameStyle(clipFormat);
-  const showLoader = (loading || !previewSrc) && !previewError;
-  const showProgress = (showLoader || downloading) && clientRender && progressMsg;
+  const showLoader = loading && !previewSrc;
+  const showProgress = showLoader && progressMsg;
 
   const modal = (
     <AnimatePresence>
@@ -205,6 +204,17 @@ export function ClipPreviewModal({
               className="clip-preview-frame relative overflow-hidden rounded-xl bg-black"
               style={frameStyle}
             >
+              {embedSrc && !previewSrc && (
+                <iframe
+                  key={embedSrc}
+                  src={embedSrc}
+                  title={clip.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="absolute inset-0 h-full w-full border-0"
+                />
+              )}
+
               {previewSrc && !previewError && (
                 <video
                   key={previewSrc}
@@ -231,29 +241,21 @@ export function ClipPreviewModal({
               )}
 
               {showLoader && (
-                <div className="absolute inset-0 z-30 grid place-items-center bg-ink-600/95 px-4">
-                  <div className="flex w-full max-w-xs flex-col items-center gap-3 text-center text-white/60">
-                    <Loader2 className="h-7 w-7 animate-spin text-spark-violet" />
-                    <span className="text-sm">
-                      {progressMsg || "Gerando corte no formato selecionado…"}
+                <div className="absolute inset-0 z-30 grid place-items-end bg-gradient-to-t from-black/80 via-transparent to-transparent px-4 pb-4">
+                  <div className="flex w-full max-w-xs flex-col items-center gap-2 text-center text-white/80">
+                    <Loader2 className="h-5 w-5 animate-spin text-spark-violet" />
+                    <span className="text-xs">
+                      {progressMsg || "Gerando MP4 com legendas…"}
                     </span>
-                    {clientRender && progress > 0 && (
+                    {progress > 0 && (
                       <div className="w-full">
-                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-1 overflow-hidden rounded-full bg-white/15">
                           <div
                             className="h-full rounded-full bg-spark-gradient transition-all duration-300"
                             style={{ width: `${progress}%` }}
                           />
                         </div>
-                        <span className="mt-1 block text-xs text-white/35">
-                          {progress}%
-                        </span>
                       </div>
-                    )}
-                    {!clientRender && (
-                      <span className="text-xs text-white/35">
-                        Máxima qualidade — reutiliza cache após a 1ª vez
-                      </span>
                     )}
                   </div>
                 </div>

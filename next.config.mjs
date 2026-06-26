@@ -3,6 +3,11 @@ const nextConfig = {
   reactStrictMode: true,
   experimental: {
     serverComponentsExternalPackages: ["@distube/ytdl-core"],
+    outputFileTracingIncludes: {
+      "/api/clips/render": ["./node_modules/ffmpeg-static/**/*"],
+      "/api/clips/preview": ["./node_modules/ffmpeg-static/**/*"],
+      "/api/clips/download": ["./node_modules/ffmpeg-static/**/*"],
+    },
   },
   env: {
     NEXT_PUBLIC_CLIP_WORKER_URL: process.env.CLIP_WORKER_URL || "",

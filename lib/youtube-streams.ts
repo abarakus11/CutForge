@@ -41,6 +41,18 @@ const EXTRA_CLIENTS = [
   },
 ];
 
+const RESOLVER_TIMEOUT_MS = isVercelRuntime() ? 12_000 : 45_000;
+
+function withTimeout<T>(
+  promise: Promise<T | null>,
+  ms = RESOLVER_TIMEOUT_MS,
+): Promise<T | null> {
+  return Promise.race([
+    promise.catch(() => null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+}
+
 async function streamsFromYtdl(videoId: string): Promise<StreamUrls | null> {
   const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${videoId}`);
   const muxed = ytdl.chooseFormat(info.formats, {
@@ -91,6 +103,48 @@ async function streamsFromYtDlp(videoId: string): Promise<StreamUrls | null> {
   return pickYtDlpStreamUrls(info.formats || []);
 }
 
+async function streamsFromInnertubePlayer(
+  videoId: string,
+): Promise<StreamUrls | null> {
+  const player = await fetchInnertubePlayer(videoId);
+  return player ? pickStreamUrls(player) : null;
+}
+
+async function streamsFromVisitorClients(
+  videoId: string,
+): Promise<StreamUrls | null> {
+  const visitorData = await fetchVisitorData();
+  for (const client of EXTRA_CLIENTS) {
+    const raw = (await fetchInnertubeWithVisitor(
+      videoId,
+      INNERTUBE_FALLBACK_KEY,
+      client,
+      visitorData,
+    )) as InnertubePlayerResponse | null;
+    if (!raw?.streamingData) continue;
+    const picked = pickStreamUrls(raw);
+    if (picked) return picked;
+  }
+  return null;
+}
+
+async function raceStreamResolvers(
+  videoId: string,
+): Promise<StreamUrls | null> {
+  const tasks: Array<Promise<StreamUrls | null>> = [
+    withTimeout(streamsFromYtdl(videoId)),
+    withTimeout(streamsFromInnertubePlayer(videoId)),
+    withTimeout(streamsFromVisitorClients(videoId)),
+  ];
+
+  if (!isVercelRuntime()) {
+    tasks.unshift(withTimeout(streamsFromYtDlp(videoId)));
+  }
+
+  const results = await Promise.all(tasks);
+  return results.find((r) => r?.videoUrl) ?? null;
+}
+
 /** Resolve direct YouTube stream URLs on the server (Node.js). */
 export async function fetchStreamsServer(
   videoId: string,
@@ -111,43 +165,5 @@ export async function fetchStreamsServer(
     }
   }
 
-  const resolvers: Array<(id: string) => Promise<StreamUrls | null>> = [
-    streamsFromYtdl,
-    async (id: string) => {
-      const player = await fetchInnertubePlayer(id);
-      return player ? pickStreamUrls(player) : null;
-    },
-  ];
-
-  if (!isVercelRuntime()) {
-    resolvers.unshift(streamsFromYtDlp);
-  }
-
-  for (const fn of resolvers) {
-    try {
-      const picked = await fn(videoId);
-      if (picked) return picked;
-    } catch (err) {
-      console.warn("[youtube-streams]", fn.name, err);
-    }
-  }
-
-  try {
-    const visitorData = await fetchVisitorData();
-    for (const client of EXTRA_CLIENTS) {
-      const raw = (await fetchInnertubeWithVisitor(
-        videoId,
-        INNERTUBE_FALLBACK_KEY,
-        client,
-        visitorData,
-      )) as InnertubePlayerResponse | null;
-      if (!raw?.streamingData) continue;
-      const picked = pickStreamUrls(raw);
-      if (picked) return picked;
-    }
-  } catch (err) {
-    console.warn("[youtube-streams] visitor innertube:", err);
-  }
-
-  return null;
+  return raceStreamResolvers(videoId);
 }
