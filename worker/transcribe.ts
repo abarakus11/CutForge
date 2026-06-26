@@ -4,6 +4,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import {
   mergeWordCues,
+  normalizeCaptionText,
   type CaptionCue,
   type WordCue,
 } from "../lib/captions-core";
@@ -55,13 +56,17 @@ function runPythonTranscribe(
 
     const proc = spawn(pythonCmd(), args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        PYTHONIOENCODING: "utf-8",
+        PYTHONUTF8: "1",
+      },
     });
 
     let stdout = "";
     let stderr = "";
-    proc.stdout.on("data", (c) => (stdout += c.toString()));
-    proc.stderr.on("data", (c) => (stderr += c.toString()));
+    proc.stdout.on("data", (c) => (stdout += c.toString("utf8")));
+    proc.stderr.on("data", (c) => (stderr += c.toString("utf8")));
 
     proc.on("close", (code) => {
       if (code !== 0) {
@@ -78,9 +83,12 @@ function runPythonTranscribe(
           reject(new Error(data.error));
           return;
         }
-        const words = (data.words || []).filter(
-          (w) => w.text?.trim() && w.end > w.start,
-        );
+        const words = (data.words || [])
+          .filter((w) => w.text?.trim() && w.end > w.start)
+          .map((w) => ({
+            ...w,
+            text: normalizeCaptionText(w.text),
+          }));
         resolve({
           language: data.language || lang || "pt",
           words,

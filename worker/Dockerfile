@@ -1,6 +1,7 @@
 FROM node:20-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3 pipx \
+  fonts-dejavu-core fonts-noto-core \
   && pipx install yt-dlp \
   && ln -s /root/.local/bin/yt-dlp /usr/local/bin/yt-dlp \
   && pip3 install --no-cache-dir faster-whisper \
@@ -8,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3 
 
 WORKDIR /app
 
-COPY lib/captions-core.ts lib/transcription-langs.ts lib/video-quality.ts lib/stream-pick.ts ./lib/
+COPY lib/captions-core.ts lib/transcription-langs.ts lib/video-quality.ts lib/stream-pick.ts lib/ass-text.ts lib/ass-file.ts ./lib/
 COPY worker/package.json ./worker/
 RUN cd worker && npm install
 

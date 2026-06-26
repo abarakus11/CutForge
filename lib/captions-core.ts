@@ -1,5 +1,11 @@
 /** Pure caption parsing + ASS (browser-safe). */
 
+export { normalizeCaptionText } from "@/lib/ass-text";
+import {
+  normalizeCaptionText,
+  resolveAssFontForRuntime,
+} from "@/lib/ass-text";
+
 export interface WordCue {
   start: number;
   end: number;
@@ -83,14 +89,16 @@ function stripVttTags(text: string): string {
 
 /** Clean raw caption text from YouTube VTT/SRT artifacts. */
 export function cleanCaptionText(text: string): string {
-  return decodeHtmlEntities(stripVttTags(text))
-    .replace(/(?:^|\s)>>\s*/g, " ")
-    .replace(/\s*>>\s*/g, " ")
-    .replace(/^[>\s]+/g, "")
-    .replace(/[>\s]+$/g, "")
-    .replace(/[♪🎵🎶\[\]()]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeCaptionText(
+    decodeHtmlEntities(stripVttTags(text))
+      .replace(/(?:^|\s)>>\s*/g, " ")
+      .replace(/\s*>>\s*/g, " ")
+      .replace(/^[>\s]+/g, "")
+      .replace(/[>\s]+$/g, "")
+      .replace(/[♪🎵🎶\[\]()]/g, "")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
 }
 
 function isValidWord(text: string): boolean {
@@ -393,42 +401,51 @@ export function hexToAssColor(hex: string): string {
 function wordToHighlightTag(
   w: WordCue,
   chunkStart: number,
-  baseAss: string,
-  highlightAss: string,
+  prevEndCs: number,
 ): string {
-  const startMs = Math.max(0, Math.round((w.start - chunkStart) * 1000));
-  const endMs = Math.max(startMs + 80, Math.round((w.end - chunkStart) * 1000));
-  return `{\\1c${baseAss}&\\t(${startMs},${endMs},\\1c${highlightAss}&)}${escapeAssText(w.text)}`;
+  const startCs = Math.max(0, Math.round((w.start - chunkStart) * 100));
+  const endCs = Math.max(startCs + 8, Math.round((w.end - chunkStart) * 100));
+  const gapCs = Math.max(0, startCs - prevEndCs);
+  const durCs = Math.max(8, endCs - startCs);
+  const text = escapeAssText(normalizeCaptionText(w.text));
+  if (gapCs > 0) {
+    return `{\\k${gapCs}}{\\kf${durCs}}${text}`;
+  }
+  return `{\\kf${durCs}}${text}`;
 }
 
 function buildKaraokeText(
   words: WordCue[],
   chunkStart: number,
-  baseAss: string,
-  highlightAss: string,
+  _baseAss: string,
+  _highlightAss: string,
 ): string {
   if (!words.length) return "";
 
   const fullText = words.map((w) => w.text).join(" ");
   const formatted = formatDisplayText(fullText);
 
+  const renderWords = (chunk: WordCue[]) => {
+    let line = "";
+    let prevEndCs = 0;
+    for (const w of chunk) {
+      line += wordToHighlightTag(w, chunkStart, prevEndCs);
+      line += " ";
+      prevEndCs = Math.max(
+        prevEndCs,
+        Math.round((w.end - chunkStart) * 100),
+      );
+    }
+    return line.trim();
+  };
+
   if (!formatted.includes("\n")) {
-    return words
-      .map((w) => wordToHighlightTag(w, chunkStart, baseAss, highlightAss))
-      .join(" ");
+    return renderWords(words);
   }
 
   const line2WordCount = formatted.split("\n")[1].split(" ").filter(Boolean).length;
   const splitAt = words.length - line2WordCount;
-  const line1 = words
-    .slice(0, splitAt)
-    .map((w) => wordToHighlightTag(w, chunkStart, baseAss, highlightAss))
-    .join(" ");
-  const line2 = words
-    .slice(splitAt)
-    .map((w) => wordToHighlightTag(w, chunkStart, baseAss, highlightAss))
-    .join(" ");
-  return `${line1}\\N${line2}`;
+  return `${renderWords(words.slice(0, splitAt))}\\N${renderWords(words.slice(splitAt))}`;
 }
 
 function wordsFromPlainCue(cue: CaptionCue): WordCue[] {
@@ -456,7 +473,9 @@ export function buildClipAss(
   const marginH = Math.round(width * 0.06);
   const baseAss = hexToAssColor(style.baseColor || "#FFFFFF");
   const highlightAss = hexToAssColor(style.highlightColor);
-  const fontName = sanitizeAssFontName(style.fontFamily || "Arial Black");
+  const fontName = resolveAssFontForRuntime(
+    sanitizeAssFontName(style.fontFamily || "Arial Black"),
+  );
 
   const clipped = cues
     .filter((c) => c.end > clipStart && c.start < clipEnd)
@@ -466,7 +485,7 @@ export function buildClipAss(
         .map((w) => ({
           start: Math.max(0, w.start - clipStart),
           end: Math.min(clipEnd - clipStart, w.end - clipStart),
-          text: w.text,
+          text: normalizeCaptionText(w.text),
         }))
         .filter((w) => w.end > w.start && w.text);
 
@@ -488,7 +507,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,${fontName},${fontSize},${baseAss},${highlightAss},&H00000000,&HC0000000,1,0,0,0,100,100,0,0,1,5,2,2,${marginH},${marginH},${marginV},-1
+Style: Karaoke,${fontName},${fontSize},${baseAss},${highlightAss},&H00000000,&HC0000000,1,0,0,0,100,100,0,0,1,5,2,2,${marginH},${marginH},${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -506,7 +525,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     })
     .join("\n");
 
-  return `\uFEFF${header}${events}\n`;
+  return `${header}${events}\n`;
 }
 
 /** Validate a hex highlight color from user input. */

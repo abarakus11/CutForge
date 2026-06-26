@@ -1,4 +1,4 @@
-import { writeFile } from "fs/promises";
+import { writeAssFile } from "../lib/ass-file";
 import { join } from "path";
 import {
   buildClipAss,
@@ -39,7 +39,7 @@ export async function writeWorkerClipAssFromMedia(
     if (!ass.includes("Dialogue:")) return null;
 
     const assPath = join(workDir, "subs.ass");
-    await writeFile(assPath, ass, "utf-8");
+    await writeAssFile(assPath, ass);
     return assPath;
   } catch (err) {
     console.error("[worker/captions] whisper falhou:", err);

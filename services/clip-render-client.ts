@@ -7,6 +7,7 @@ import {
 } from "@/lib/platform-output";
 import { getYouTubeStreamUrls } from "@/services/youtube-stream-client";
 import { buildClipAssClient } from "@/services/captions-client";
+import { finalizeAssContent } from "@/lib/ass-text";
 import { parseHighlightColor } from "@/lib/captions-core";
 
 export interface ClientRenderOptions {
@@ -294,9 +295,7 @@ export async function renderClipClient(
 
   let vf = buildCropScaleFilter(width, height);
   if (assContent) {
-    const assBytes = new TextEncoder().encode(
-      assContent.startsWith("\uFEFF") ? assContent : `\uFEFF${assContent}`,
-    );
+    const assBytes = new TextEncoder().encode(finalizeAssContent(assContent));
     await ffmpeg.writeFile("subs.ass", assBytes);
     vf += ",subtitles=subs.ass";
   }

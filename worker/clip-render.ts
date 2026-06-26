@@ -8,6 +8,7 @@ import {
   type RenderQuality,
 } from "./platform";
 import { encodeSettingsForQuality } from "../lib/video-quality";
+import { assFilterForPath } from "../lib/ass-text";
 
 function ffmpegBin(): string {
   if (process.env.FFMPEG_PATH) return process.env.FFMPEG_PATH;
@@ -52,8 +53,7 @@ export async function formatClipForPlatform(
   let vf = buildCropScaleFilter(width, height);
 
   if (subtitlesPath) {
-    const escaped = subtitlesPath.replace(/\\/g, "/").replace(/:/g, "\\:");
-    vf += `,ass='${escaped}'`;
+    vf += `,${assFilterForPath(subtitlesPath)}`;
   }
 
   const { preset, crf, audioBitrate } = encodeSettingsForQuality(quality);

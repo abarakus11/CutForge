@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, writeFile } from "fs/promises";
+import { mkdir, readdir, readFile } from "fs/promises";
+import { writeAssFile } from "@/lib/ass-file";
 import { join } from "path";
 import { CAPTION_LANG_LABELS } from "@/config/constants";
 import { CAPTION_FONTS } from "@/lib/caption-fonts";
@@ -269,7 +270,7 @@ export async function writeClipAssFile(
   if (!ass) return null;
 
   const assPath = join(dir, "subs.ass");
-  await writeFile(assPath, ass, "utf-8");
+  await writeAssFile(assPath, ass);
   return assPath;
 }
 

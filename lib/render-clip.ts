@@ -10,7 +10,8 @@ import {
   type RenderQuality,
 } from "@/lib/platform-output";
 import { encodeSettingsForQuality } from "@/lib/video-quality";
-import { escapeFfmpegSubPath, parseHighlightColor, writeClipAssFile } from "@/lib/captions";
+import { parseHighlightColor, writeClipAssFile } from "@/lib/captions";
+import { assFilterForPath } from "@/lib/ass-text";
 import {
   getCachedStreamUrl,
   getFfmpegPath,
@@ -185,7 +186,7 @@ async function reformatForPlatform(
   let vf = buildCropScaleFilter(width, height);
 
   if (subtitlesPath) {
-    vf += `,ass='${escapeFfmpegSubPath(subtitlesPath)}'`;
+    vf += `,${assFilterForPath(subtitlesPath)}`;
   }
 
   const { preset, crf, audioBitrate } = encodeSettingsForQuality(quality);
@@ -259,7 +260,7 @@ export async function renderClipToBuffer({
   const font = captionFont || "arial-black";
 
   const cacheKey = clipCacheKey([
-    "v12-hq-source",
+    "v13-utf8-subs",
     videoId,
     String(Math.floor(start)),
     String(Math.floor(end)),
