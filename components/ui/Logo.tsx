@@ -27,7 +27,7 @@ const SIZES: Record<
   },
 };
 
-/** Logo oficial CutForge AI (PNG 3D). */
+/** Logo oficial CutForge AI (PNG 3D, fundo transparente). */
 export function Logo({
   className,
   variant = "compact",
@@ -41,7 +41,8 @@ export function Logo({
       alt={BRAND.logoAlt}
       width={size.width}
       height={size.height}
-      className={cn(size.className, className)}
+      unoptimized
+      className={cn("bg-transparent", size.className, className)}
       priority={priority}
     />
   );
