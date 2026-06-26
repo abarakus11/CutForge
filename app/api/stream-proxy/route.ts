@@ -12,7 +12,8 @@ function isAllowedStreamHost(url: URL): boolean {
   return (
     host.endsWith("googlevideo.com") ||
     host.endsWith("youtube.com") ||
-    host.endsWith("ytimg.com")
+    host.endsWith("ytimg.com") ||
+    host.endsWith("googleusercontent.com")
   );
 }
 

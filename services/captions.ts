@@ -1,7 +1,27 @@
 import type { SubtitleTrack } from "@/types";
-import { shouldUseClientRender } from "@/lib/render-env";
-import { fetchInnertubePlayer } from "@/lib/innertube-shared";
 import { CAPTION_LANG_LABELS } from "@/config/constants";
+import { shouldUseClientRender } from "@/lib/render-env";
+
+async function fetchPlayerFromApi(videoId: string) {
+  const res = await fetch(
+    `/api/youtube/player?videoId=${encodeURIComponent(videoId)}`,
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    player?: {
+      captions?: {
+        playerCaptionsTracklistRenderer?: {
+          captionTracks?: Array<{
+            languageCode?: string;
+            name?: { simpleText?: string };
+            kind?: string;
+          }>;
+        };
+      };
+    };
+  };
+  return data.player ?? null;
+}
 
 function labelForLang(lang: string, auto: boolean): string {
   const base =
@@ -14,7 +34,7 @@ function labelForLang(lang: string, auto: boolean): string {
 async function fetchSubtitleLanguagesClient(
   videoId: string,
 ): Promise<SubtitleTrack[]> {
-  const player = await fetchInnertubePlayer(videoId);
+  const player = await fetchPlayerFromApi(videoId);
   const tracks =
     player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
 
@@ -22,10 +42,7 @@ async function fetchSubtitleLanguagesClient(
     .filter((t) => t.languageCode)
     .map((t) => ({
       lang: t.languageCode!,
-      label: labelForLang(
-        t.languageCode!,
-        t.kind === "asr",
-      ),
+      label: labelForLang(t.languageCode!, t.kind === "asr"),
       auto: t.kind === "asr",
     }));
 }

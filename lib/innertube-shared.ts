@@ -104,15 +104,22 @@ export function pickStreamUrls(
 export async function getYouTubeStreamUrls(
   videoId: string,
 ): Promise<StreamUrls> {
-  const player = await fetchInnertubePlayer(videoId);
-  if (!player) {
+  // Browser cannot call Innertube directly (CORS / Origin blocked by YouTube).
+  if (typeof window !== "undefined") {
+    const res = await fetch(
+      `/api/youtube/streams?videoId=${encodeURIComponent(videoId)}`,
+    );
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error || "Não foi possível obter o stream do vídeo");
+    }
+    return res.json() as Promise<StreamUrls>;
+  }
+
+  const { fetchStreamsServer } = await import("@/lib/youtube-streams");
+  const streams = await fetchStreamsServer(videoId);
+  if (!streams) {
     throw new Error("Não foi possível obter o stream do vídeo");
   }
-
-  const streams = pickStreamUrls(player);
-  if (!streams) {
-    throw new Error("URLs de stream indisponíveis para este vídeo");
-  }
-
   return streams;
 }

@@ -7,7 +7,28 @@ import {
   parseVttWords,
   type CaptionCue,
 } from "@/lib/captions-core";
-import { fetchInnertubePlayer } from "@/lib/innertube-shared";
+
+async function fetchPlayerFromApi(videoId: string) {
+  const res = await fetch(
+    `/api/youtube/player?videoId=${encodeURIComponent(videoId)}`,
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    player?: {
+      captions?: {
+        playerCaptionsTracklistRenderer?: {
+          captionTracks?: Array<{
+            languageCode?: string;
+            name?: { simpleText?: string };
+            kind?: string;
+            baseUrl?: string;
+          }>;
+        };
+      };
+    };
+  };
+  return data.player ?? null;
+}
 
 function langScore(candidate: string, preferred: string): number {
   const c = candidate.toLowerCase();
@@ -19,11 +40,12 @@ function langScore(candidate: string, preferred: string): number {
 }
 
 async function downloadCaptionVtt(baseUrl: string): Promise<string> {
-  const url = baseUrl.includes("fmt=")
+  const vttUrl = baseUrl.includes("fmt=")
     ? baseUrl.replace(/fmt=[^&]+/, "fmt=vtt")
     : `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}fmt=vtt`;
 
-  const res = await fetch(url);
+  const proxy = `/api/stream-proxy?url=${encodeURIComponent(vttUrl)}`;
+  const res = await fetch(proxy);
   if (!res.ok) throw new Error(`VTT HTTP ${res.status}`);
   return res.text();
 }
@@ -33,7 +55,7 @@ export async function loadCaptionsClient(
   videoId: string,
   preferredLang?: string | null,
 ): Promise<{ cues: CaptionCue[]; language: string } | null> {
-  const player = await fetchInnertubePlayer(videoId);
+  const player = await fetchPlayerFromApi(videoId);
   const tracks =
     player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
   if (!tracks.length) return null;
