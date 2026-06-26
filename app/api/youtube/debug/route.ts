@@ -74,5 +74,33 @@ export async function GET(request: Request) {
     out.dataApi = "YOUTUBE_API_KEY not set";
   }
 
+  // Watch page scrape
+  try {
+    const r = await fetch(`https://www.youtube.com/watch?v=${id}`, {
+      headers: { "User-Agent": UA, "Accept-Language": "pt-BR" },
+      cache: "no-store",
+    });
+    const html = await r.text();
+    const len =
+      html.match(/"lengthSeconds":"(\d+)"/) ||
+      html.match(/lengthSeconds\\":\\"(\d+)/);
+    out.watchPage = { status: r.status, htmlLen: html.length, duration: len?.[1] };
+  } catch (e) {
+    out.watchPage = { error: String(e) };
+  }
+
+  // m.youtube.com
+  try {
+    const r = await fetch(`https://m.youtube.com/watch?v=${id}`, {
+      headers: { "User-Agent": UA },
+      cache: "no-store",
+    });
+    const html = await r.text();
+    const len = html.match(/"lengthSeconds":"(\d+)"/);
+    out.mobileWatch = { status: r.status, htmlLen: html.length, duration: len?.[1] };
+  } catch (e) {
+    out.mobileWatch = { error: String(e) };
+  }
+
   return NextResponse.json(out);
 }
