@@ -83,8 +83,43 @@ export async function GET(request: Request) {
     const html = await r.text();
     const len =
       html.match(/"lengthSeconds":"(\d+)"/) ||
-      html.match(/lengthSeconds\\":\\"(\d+)/);
-    out.watchPage = { status: r.status, htmlLen: html.length, duration: len?.[1] };
+      html.match(/lengthSeconds\\":\\"(\d+)/) ||
+      html.match(/"approxDurationMs":"(\d+)"/);
+
+    let playerDuration: string | undefined;
+    const pIdx = html.indexOf("ytInitialPlayerResponse");
+    if (pIdx > 0) {
+      const start = html.indexOf("{", pIdx);
+      let depth = 0;
+      for (let i = start; i < Math.min(html.length, start + 500000); i++) {
+        if (html[i] === "{") depth++;
+        else if (html[i] === "}") {
+          depth--;
+          if (depth === 0) {
+            try {
+              const parsed = JSON.parse(html.slice(start, i + 1)) as {
+                videoDetails?: { lengthSeconds?: string };
+                playabilityStatus?: { status?: string };
+              };
+              playerDuration = parsed.videoDetails?.lengthSeconds;
+              out.playerPlayability = parsed.playabilityStatus?.status;
+            } catch {
+              /* ignore */
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    out.watchPage = {
+      status: r.status,
+      htmlLen: html.length,
+      duration: len?.[1] || playerDuration,
+      approxMs: html.match(/"approxDurationMs":"(\d+)"/)?.[1],
+      hasPlayer: pIdx > 0,
+      sample: html.includes("lengthSeconds") ? "has lengthSeconds string" : "no lengthSeconds",
+    };
   } catch (e) {
     out.watchPage = { error: String(e) };
   }
