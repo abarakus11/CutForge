@@ -1,43 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseYouTubeId, thumbnailFor } from "@/services/youtube";
 import {
-  fetchYouTubeMetaHttp,
-  resolveYouTubeVideoId,
+  isVercelRuntime,
+  resolveAndFetchYouTubeMeta,
 } from "@/lib/youtube-meta";
 import { watchUrl, ytDlp } from "@/lib/ytdlp";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-async function fetchMeta(videoId: string) {
-  if (process.env.VERCEL === "1") {
-    return fetchYouTubeMetaHttp(videoId);
-  }
-
-  try {
-    const info = (await ytDlp(watchUrl(videoId), {
-      dumpSingleJson: true,
-      quiet: true,
-    })) as {
-      title?: string;
-      channel?: string;
-      uploader?: string;
-      duration?: number;
-    };
-
-    if (info.duration && info.duration > 0) {
-      return {
-        title: info.title || "Vídeo do YouTube",
-        channel: info.channel || info.uploader || "YouTube",
-        duration: info.duration,
-      };
-    }
-  } catch (err) {
-    console.warn("[youtube/meta] yt-dlp failed, using HTTP fallback:", err);
-  }
-
-  return fetchYouTubeMetaHttp(videoId);
-}
 
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get("url")?.trim();
@@ -50,15 +21,51 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const videoId = await resolveYouTubeVideoId(rawId);
-    const info = await fetchMeta(videoId);
+    let videoId = rawId;
+    let title: string;
+    let channel: string;
+    let duration: number;
+
+    if (isVercelRuntime()) {
+      const resolved = await resolveAndFetchYouTubeMeta(rawId);
+      videoId = resolved.id;
+      title = resolved.title;
+      channel = resolved.channel;
+      duration = resolved.duration;
+    } else {
+      try {
+        const info = (await ytDlp(watchUrl(rawId), {
+          dumpSingleJson: true,
+          quiet: true,
+        })) as {
+          title?: string;
+          channel?: string;
+          uploader?: string;
+          duration?: number;
+        };
+
+        if (info.duration && info.duration > 0) {
+          title = info.title || "Vídeo do YouTube";
+          channel = info.channel || info.uploader || "YouTube";
+          duration = info.duration;
+        } else {
+          throw new Error("no duration");
+        }
+      } catch {
+        const resolved = await resolveAndFetchYouTubeMeta(rawId);
+        videoId = resolved.id;
+        title = resolved.title;
+        channel = resolved.channel;
+        duration = resolved.duration;
+      }
+    }
 
     return NextResponse.json({
       id: videoId,
       url: watchUrl(videoId),
-      title: info.title,
-      channel: info.channel,
-      duration: Math.floor(info.duration),
+      title,
+      channel,
+      duration: Math.floor(duration),
       thumbnail: thumbnailFor(videoId),
     });
   } catch (err) {
