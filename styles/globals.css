@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-line;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-ink text-white/90 antialiased;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(124, 147, 255, 0.28);
+    color: #fff;
+  }
+
+  /* Quiet, premium scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.16);
+    background-clip: content-box;
+  }
+}
+
+@layer components {
+  /* Frosted glass surface used across cards, navbar and panels */
+  .glass {
+    @apply border border-line bg-white/[0.03] backdrop-blur-xl;
+  }
+
+  .glass-strong {
+    @apply border border-line bg-ink-700/70 backdrop-blur-2xl;
+  }
+
+  /* The signature gradient text */
+  .text-spark {
+    @apply bg-spark-gradient bg-clip-text text-transparent;
+  }
+
+  /* Thin gradient hairline used as a divider/accent */
+  .hairline {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(124, 147, 255, 0.5),
+      transparent
+    );
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Radial spotlight behind the hero */
+  .bg-spotlight {
+    background: radial-gradient(
+        60% 50% at 50% 0%,
+        rgba(91, 140, 255, 0.16) 0%,
+        transparent 70%
+      ),
+      radial-gradient(
+        40% 40% at 80% 10%,
+        rgba(166, 107, 255, 0.12) 0%,
+        transparent 70%
+      );
+  }
+
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  }
+
+  /* Clip preview player */
+  .clip-preview-frame {
+    min-height: 120px;
+  }
+
+  .clip-preview-video {
+    display: block;
+    object-fit: contain;
+    object-position: center;
+    background: #000;
+  }
+
+  .clip-preview-video::-webkit-media-controls-fullscreen-button {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

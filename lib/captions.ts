@@ -1,0 +1,702 @@
+import { mkdir, readdir, readFile, writeFile } from "fs/promises";
+import { join } from "path";
+import { CAPTION_LANG_LABELS } from "@/config/constants";
+import type { SubtitleTrack } from "@/types";
+import { watchUrl, ytDlp } from "@/lib/ytdlp";
+
+export interface WordCue {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface CaptionCue {
+  start: number;
+  end: number;
+  text: string;
+  words?: WordCue[];
+}
+
+export interface CaptionStyleOptions {
+  highlightColor: string;
+  baseColor?: string;
+}
+
+interface VideoSubtitleMeta {
+  language?: string;
+  subtitles?: Record<string, unknown>;
+  automatic_captions?: Record<string, unknown>;
+}
+
+interface CachedCaptions {
+  language: string;
+  cues: CaptionCue[];
+  words: WordCue[];
+}
+
+const captionStore = new Map<string, CachedCaptions>();
+const CAPTION_PARSE_VERSION = "v4-clean-karaoke";
+
+const WORD_TAG_RE =
+  /<(\d{1,2}:\d{2}:\d{2}\.\d{3})><c>\s*([^<]*?)\s*<\/c>/g;
+const FIRST_TAG_RE = /<(\d{1,2}:\d{2}:\d{2}\.\d{3})><c>/;
+
+function parseTimestamp(value: string): number {
+  const parts = value.trim().split(":");
+  if (parts.length === 3) {
+    const [h, m, s] = parts;
+    return Number(h) * 3600 + Number(m) * 60 + parseFloat(s);
+  }
+  if (parts.length === 2) {
+    const [m, s] = parts;
+    return Number(m) * 60 + parseFloat(s);
+  }
+  return parseFloat(value);
+}
+
+function decodeHtmlEntities(text: string): string {
+  return text.replace(/&(#x?[0-9a-fA-F]+|\w+);/g, (match, entity: string) => {
+    const named: Record<string, string> = {
+      amp: "&",
+      lt: "<",
+      gt: ">",
+      quot: '"',
+      apos: "'",
+      nbsp: " ",
+    };
+    if (named[entity]) return named[entity];
+    if (entity.startsWith("#x")) {
+      return String.fromCharCode(parseInt(entity.slice(2), 16));
+    }
+    if (entity.startsWith("#")) {
+      return String.fromCharCode(parseInt(entity.slice(1), 10));
+    }
+    return match;
+  });
+}
+
+function stripVttTags(text: string): string {
+  return text
+    .replace(/<[^>]+>/g, "")
+    .replace(/\\N/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Clean raw caption text from YouTube VTT/SRT artifacts. */
+export function cleanCaptionText(text: string): string {
+  return decodeHtmlEntities(stripVttTags(text))
+    .replace(/(?:^|\s)>>\s*/g, " ")
+    .replace(/\s*>>\s*/g, " ")
+    .replace(/^[>\s]+/g, "")
+    .replace(/[>\s]+$/g, "")
+    .replace(/[♪🎵🎶\[\]()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isValidWord(text: string): boolean {
+  const t = cleanCaptionText(text);
+  if (!t || t.length > 36) return false;
+  if (!/[a-zA-ZÀ-ÿ0-9]/.test(t)) return false;
+  return true;
+}
+
+/** Extract per-word timings from a single VTT line (only lines with <c> tags). */
+function parseWordTimedLine(
+  line: string,
+  blockStart: number,
+  blockEnd: number,
+): WordCue[] {
+  if (!line.includes("<c>")) return [];
+
+  const words: WordCue[] = [];
+  const firstTag = line.match(FIRST_TAG_RE);
+
+  if (firstTag?.index && firstTag.index > 0) {
+    const preText = cleanCaptionText(line.slice(0, firstTag.index));
+    if (preText && !preText.includes(" ") && isValidWord(preText)) {
+      const firstTime = parseTimestamp(firstTag[1]);
+      words.push({ start: blockStart, end: firstTime, text: preText });
+    }
+  }
+
+  const tagged: { time: number; text: string }[] = [];
+  let match: RegExpExecArray | null;
+  WORD_TAG_RE.lastIndex = 0;
+  while ((match = WORD_TAG_RE.exec(line)) !== null) {
+    const text = cleanCaptionText(match[2]);
+    if (text && isValidWord(text)) {
+      tagged.push({ time: parseTimestamp(match[1]), text });
+    }
+  }
+
+  for (let i = 0; i < tagged.length; i++) {
+    const end = i + 1 < tagged.length ? tagged[i + 1].time : blockEnd;
+    if (end > tagged[i].time) {
+      words.push({ start: tagged[i].time, end, text: tagged[i].text });
+    }
+  }
+
+  return words;
+}
+
+function dedupeWords(words: WordCue[]): WordCue[] {
+  const sorted = [...words].sort((a, b) => a.start - b.start);
+  const result: WordCue[] = [];
+
+  for (const w of sorted) {
+    const prev = result[result.length - 1];
+    if (prev) {
+      const sameText = prev.text.toLowerCase() === w.text.toLowerCase();
+      if (sameText && Math.abs(prev.start - w.start) < 0.15) continue;
+      if (sameText && w.start - prev.start < 0.6) continue;
+    }
+    result.push({ ...w });
+  }
+
+  for (let i = 0; i < result.length; i++) {
+    const next = result[i + 1];
+    if (next && next.start > result[i].start) {
+      result[i].end = next.start;
+    }
+    if (result[i].end <= result[i].start) {
+      result[i].end = result[i].start + 0.22;
+    }
+  }
+
+  return result;
+}
+
+/** Parse YouTube VTT — only timed lines, skips rolling duplicate blocks. */
+export function parseVttWords(content: string): WordCue[] {
+  const allWords: WordCue[] = [];
+  const blocks = content.replace(/\uFEFF/g, "").split(/\n\n+/);
+
+  for (const block of blocks) {
+    const lines = block.split("\n").filter((l) => l.trim());
+    if (!lines.length) continue;
+
+    const timeLine = lines.find((l) => l.includes("-->"));
+    if (!timeLine) continue;
+
+    const [rawStart, rawEnd] = timeLine
+      .split("-->")
+      .map((s) => s.trim().split(" ")[0]);
+    const blockStart = parseTimestamp(rawStart);
+    const blockEnd = parseTimestamp(rawEnd);
+
+    if (blockEnd - blockStart < 0.05) continue;
+
+    const textLines = lines.filter(
+      (l) => l !== timeLine && !/^\d+$/.test(l) && !/^WEBVTT/.test(l),
+    );
+
+    for (const line of textLines) {
+      if (!line.includes("<c>")) continue;
+      allWords.push(...parseWordTimedLine(line, blockStart, blockEnd));
+    }
+  }
+
+  return dedupeWords(allWords);
+}
+
+/** Parse a WebVTT file into plain timed cues (fallback). */
+export function parseVtt(content: string): CaptionCue[] {
+  const cues: CaptionCue[] = [];
+  const blocks = content.replace(/\uFEFF/g, "").split(/\n\n+/);
+
+  for (const block of blocks) {
+    const lines = block.split("\n").filter((l) => l.trim());
+    if (!lines.length) continue;
+
+    const timeLine = lines.find((l) => l.includes("-->"));
+    if (!timeLine) continue;
+
+    const [rawStart, rawEnd] = timeLine
+      .split("-->")
+      .map((s) => s.trim().split(" ")[0]);
+    const start = parseTimestamp(rawStart);
+    const end = parseTimestamp(rawEnd);
+
+    if (end - start < 0.05) continue;
+
+    const textLines = lines.filter(
+      (l) => l !== timeLine && !/^\d+$/.test(l) && !/^WEBVTT/.test(l) && !l.includes("<c>"),
+    );
+    const text = cleanCaptionText(textLines.join(" "));
+    if (text && end > start && text.length <= 120) {
+      cues.push({ start, end, text });
+    }
+  }
+
+  return cues;
+}
+
+const MAX_LINE_CHARS = 28;
+const MAX_WORDS_PER_CHUNK = 5;
+const MAX_BLOCK_DURATION = 3.5;
+const MERGE_GAP = 0.35;
+
+export function formatDisplayText(text: string): string {
+  const words = text.split(" ").filter(Boolean);
+  if (!words.length) return "";
+  if (text.length <= MAX_LINE_CHARS) return text;
+
+  let bestSplit = -1;
+  let bestScore = Infinity;
+
+  for (let i = 1; i < words.length; i++) {
+    const line1 = words.slice(0, i).join(" ");
+    const line2 = words.slice(i).join(" ");
+    if (line1.length > MAX_LINE_CHARS || line2.length > MAX_LINE_CHARS) continue;
+    const score = Math.abs(line1.length - line2.length);
+    if (score < bestScore) {
+      bestScore = score;
+      bestSplit = i;
+    }
+  }
+
+  if (bestSplit > 0) {
+    return `${words.slice(0, bestSplit).join(" ")}\n${words.slice(bestSplit).join(" ")}`;
+  }
+
+  return text;
+}
+
+export function mergeCues(cues: CaptionCue[]): CaptionCue[] {
+  const cleaned = cues
+    .map((c) => ({ ...c, text: cleanCaptionText(c.text) }))
+    .filter((c) => c.text.length > 0);
+
+  if (!cleaned.length) return [];
+
+  const merged: CaptionCue[] = [];
+  let buffer = cleaned[0].text;
+  let start = cleaned[0].start;
+  let end = cleaned[0].end;
+
+  const flush = () => {
+    const text = formatDisplayText(buffer.trim());
+    if (!text) return;
+    merged.push({
+      start,
+      end: Math.max(end, start + 0.6),
+      text,
+    });
+  };
+
+  for (let i = 1; i < cleaned.length; i++) {
+    const cue = cleaned[i];
+    const gap = cue.start - end;
+    const combined = `${buffer} ${cue.text}`.trim();
+    const duration = end - start;
+    const endsSentence = /[.!?…]$/.test(buffer);
+
+    const shouldFlush =
+      gap > MERGE_GAP ||
+      endsSentence ||
+      duration >= MAX_BLOCK_DURATION ||
+      combined.split(" ").length > MAX_WORDS_PER_CHUNK;
+
+    if (shouldFlush) {
+      flush();
+      buffer = cue.text;
+      start = cue.start;
+      end = cue.end;
+    } else {
+      buffer = combined;
+      end = cue.end;
+    }
+  }
+
+  flush();
+  return merged;
+}
+
+export function mergeWordCues(words: WordCue[]): CaptionCue[] {
+  if (!words.length) return [];
+
+  const merged: CaptionCue[] = [];
+  let chunk: WordCue[] = [];
+  let chunkStart = words[0].start;
+  let chunkEnd = words[0].end;
+
+  const flush = () => {
+    if (!chunk.length) return;
+    const text = formatDisplayText(chunk.map((w) => w.text).join(" "));
+    if (!text) return;
+    merged.push({
+      start: chunkStart,
+      end: Math.max(chunkEnd, chunkStart + 0.6),
+      text,
+      words: [...chunk],
+    });
+    chunk = [];
+  };
+
+  for (const w of words) {
+    if (!chunk.length) {
+      chunkStart = w.start;
+      chunk.push(w);
+      chunkEnd = w.end;
+      continue;
+    }
+
+    const gap = w.start - chunkEnd;
+    const wordCount = chunk.length + 1;
+    const duration = chunkEnd - chunkStart;
+    const endsSentence = /[.!?…]$/.test(chunk[chunk.length - 1].text);
+
+    const shouldFlush =
+      gap > MERGE_GAP ||
+      endsSentence ||
+      duration >= MAX_BLOCK_DURATION ||
+      wordCount > MAX_WORDS_PER_CHUNK;
+
+    if (shouldFlush) {
+      flush();
+      chunkStart = w.start;
+    }
+
+    chunk.push(w);
+    chunkEnd = w.end;
+  }
+
+  flush();
+  return merged;
+}
+
+function langScore(candidate: string, preferred: string): number {
+  const c = candidate.toLowerCase();
+  const p = preferred.toLowerCase();
+  if (c === p) return 100;
+  if (c.startsWith(p) || p.startsWith(c.split("-")[0])) return 80;
+  if (c.split("-")[0] === p.split("-")[0]) return 60;
+  return 0;
+}
+
+function labelForLang(lang: string): string {
+  return CAPTION_LANG_LABELS[lang] || CAPTION_LANG_LABELS[lang.split("-")[0]] || lang;
+}
+
+/** List subtitle tracks available for a YouTube video. */
+export async function listSubtitleLanguages(
+  videoId: string,
+): Promise<SubtitleTrack[]> {
+  const meta = (await ytDlp(watchUrl(videoId), {
+    dumpSingleJson: true,
+  })) as VideoSubtitleMeta;
+
+  const preferred = meta.language || "pt";
+  const tracks: SubtitleTrack[] = [];
+  const seen = new Set<string>();
+
+  for (const lang of Object.keys(meta.subtitles || {})) {
+    if (seen.has(lang)) continue;
+    seen.add(lang);
+    tracks.push({ lang, label: labelForLang(lang), auto: false });
+  }
+
+  for (const lang of Object.keys(meta.automatic_captions || {})) {
+    if (seen.has(lang)) continue;
+    seen.add(lang);
+    tracks.push({
+      lang,
+      label: `${labelForLang(lang)} (automática)`,
+      auto: true,
+    });
+  }
+
+  return tracks.sort((a, b) => {
+    const scoreA = langScore(a.lang, preferred) + (a.auto ? 0 : 10);
+    const scoreB = langScore(b.lang, preferred) + (b.auto ? 0 : 10);
+    return scoreB - scoreA;
+  });
+}
+
+async function downloadSubs(
+  videoId: string,
+  lang: string,
+  auto: boolean,
+  dir: string,
+): Promise<string | null> {
+  await mkdir(dir, { recursive: true });
+  const output = join(dir, "subs");
+
+  await ytDlp(watchUrl(videoId), {
+    writeSubs: !auto,
+    writeAutoSubs: auto,
+    subLangs: [lang],
+    subFormat: "vtt",
+    skipDownload: true,
+    output,
+  });
+
+  const files = await readdir(dir);
+  const sub = files.find((f) => f.endsWith(".vtt") || f.endsWith(".srt"));
+  return sub ? join(dir, sub) : null;
+}
+
+function buildLangAttempts(
+  meta: VideoSubtitleMeta,
+  preferredLang?: string | null,
+): { lang: string; auto: boolean }[] {
+  const videoLang = meta.language || "pt";
+  const preferred =
+    preferredLang && preferredLang !== "auto" ? preferredLang : videoLang;
+
+  const manual = Object.keys(meta.subtitles || {}).map((l) => ({
+    lang: l,
+    auto: false,
+  }));
+  const auto = Object.keys(meta.automatic_captions || {}).map((l) => ({
+    lang: l,
+    auto: true,
+  }));
+
+  const all = [...manual, ...auto].sort((a, b) => {
+    const scoreA = langScore(a.lang, preferred) + (a.auto ? 0 : 10);
+    const scoreB = langScore(b.lang, preferred) + (b.auto ? 0 : 10);
+    return scoreB - scoreA;
+  });
+
+  const attempts: { lang: string; auto: boolean }[] = [];
+  const seen = new Set<string>();
+
+  for (const item of all) {
+    const key = `${item.lang}:${item.auto}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    attempts.push(item);
+  }
+
+  return attempts;
+}
+
+/** Load and cache normalized captions for a video. */
+export async function loadVideoCaptions(
+  videoId: string,
+  preferredLang?: string | null,
+): Promise<CachedCaptions | null> {
+  const langKey = preferredLang || "auto";
+  const cacheKey = `${CAPTION_PARSE_VERSION}:${langKey}:${videoId}`;
+  const cached = captionStore.get(cacheKey);
+  if (cached) return cached;
+
+  const meta = (await ytDlp(watchUrl(videoId), {
+    dumpSingleJson: true,
+  })) as VideoSubtitleMeta;
+
+  const tmpDir = join(process.cwd(), ".cache", "captions", videoId, langKey);
+  const attempts = buildLangAttempts(meta, preferredLang);
+
+  for (const attempt of attempts) {
+    const subPath = await downloadSubs(
+      videoId,
+      attempt.lang,
+      attempt.auto,
+      tmpDir,
+    );
+    if (!subPath) continue;
+
+    const content = await readFile(subPath, "utf-8");
+    const words = parseVttWords(content);
+    const cues =
+      words.length > 0
+        ? mergeWordCues(words)
+        : mergeCues(parseVtt(content));
+    if (!cues.length) continue;
+
+    const result = { language: attempt.lang, cues, words };
+    captionStore.set(cacheKey, result);
+    return result;
+  }
+
+  return null;
+}
+
+function formatAssTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h}:${String(m).padStart(2, "0")}:${s.toFixed(2).padStart(5, "0")}`;
+}
+
+function escapeAssText(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\N")
+    .replace(/{/g, "(")
+    .replace(/}/g, ")");
+}
+
+/** Convert #RRGGBB to ASS &HBBGGRR format. */
+export function hexToAssColor(hex: string): string {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return "&H00FFFFFF";
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `&H00${b.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${r.toString(16).padStart(2, "0")}`.toUpperCase();
+}
+
+function wordToHighlightTag(
+  w: WordCue,
+  chunkStart: number,
+  baseAss: string,
+  highlightAss: string,
+): string {
+  const startMs = Math.max(0, Math.round((w.start - chunkStart) * 1000));
+  const endMs = Math.max(startMs + 80, Math.round((w.end - chunkStart) * 1000));
+  return `{\\1c${baseAss}&\\t(${startMs},${endMs},\\1c${highlightAss}&)}${escapeAssText(w.text)}`;
+}
+
+function buildKaraokeText(
+  words: WordCue[],
+  chunkStart: number,
+  baseAss: string,
+  highlightAss: string,
+): string {
+  if (!words.length) return "";
+
+  const fullText = words.map((w) => w.text).join(" ");
+  const formatted = formatDisplayText(fullText);
+
+  if (!formatted.includes("\n")) {
+    return words
+      .map((w) => wordToHighlightTag(w, chunkStart, baseAss, highlightAss))
+      .join(" ");
+  }
+
+  const line2WordCount = formatted.split("\n")[1].split(" ").filter(Boolean).length;
+  const splitAt = words.length - line2WordCount;
+  const line1 = words
+    .slice(0, splitAt)
+    .map((w) => wordToHighlightTag(w, chunkStart, baseAss, highlightAss))
+    .join(" ");
+  const line2 = words
+    .slice(splitAt)
+    .map((w) => wordToHighlightTag(w, chunkStart, baseAss, highlightAss))
+    .join(" ");
+  return `${line1}\\N${line2}`;
+}
+
+function wordsFromPlainCue(cue: CaptionCue): WordCue[] {
+  const parts = cue.text.split(/\s+/).filter(Boolean);
+  if (!parts.length) return [];
+  const dur = (cue.end - cue.start) / parts.length;
+  return parts.map((text, i) => ({
+    start: cue.start + i * dur,
+    end: cue.start + (i + 1) * dur,
+    text,
+  }));
+}
+
+/** Build ASS subtitles for a clip segment, timed from 0. */
+export function buildClipAss(
+  cues: CaptionCue[],
+  clipStart: number,
+  clipEnd: number,
+  width: number,
+  height: number,
+  style: CaptionStyleOptions = { highlightColor: "#FFFF00" },
+): string {
+  const fontSize = Math.round(height * 0.052);
+  const marginV = Math.round(height * 0.11);
+  const marginH = Math.round(width * 0.06);
+  const baseAss = hexToAssColor(style.baseColor || "#FFFFFF");
+  const highlightAss = hexToAssColor(style.highlightColor);
+
+  const clipped = cues
+    .filter((c) => c.end > clipStart && c.start < clipEnd)
+    .map((c) => {
+      const words = (c.words ?? wordsFromPlainCue(c))
+        .filter((w) => w.end > clipStart && w.start < clipEnd)
+        .map((w) => ({
+          start: Math.max(0, w.start - clipStart),
+          end: Math.min(clipEnd - clipStart, w.end - clipStart),
+          text: w.text,
+        }))
+        .filter((w) => w.end > w.start && w.text);
+
+      if (!words.length) return null;
+
+      const relStart = words[0].start;
+      const relEnd = words[words.length - 1].end;
+
+      return { start: relStart, end: relEnd, words };
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null && c.end - c.start > 0.05);
+
+  const header = `[Script Info]
+ScriptType: v4.00+
+PlayResX: ${width}
+PlayResY: ${height}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Karaoke,Arial Black,${fontSize},${baseAss},${highlightAss},&H00000000,&HC0000000,1,0,0,0,100,100,0,0,1,5,2,2,${marginH},${marginH},${marginV},1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+
+  const events = clipped
+    .map((c) => {
+      const karaoke = buildKaraokeText(
+        c.words,
+        c.start,
+        baseAss,
+        highlightAss,
+      );
+      return `Dialogue: 0,${formatAssTime(c.start)},${formatAssTime(c.end + 0.15)},Karaoke,,0,0,0,,${karaoke}`;
+    })
+    .join("\n");
+
+  return `${header}${events}\n`;
+}
+
+/** Write ASS file for a clip; returns path or null if no captions. */
+export async function writeClipAssFile(
+  videoId: string,
+  clipStart: number,
+  clipEnd: number,
+  width: number,
+  height: number,
+  dir: string,
+  captionLang?: string | null,
+  highlightColor?: string,
+): Promise<string | null> {
+  const captions = await loadVideoCaptions(videoId, captionLang);
+  if (!captions) return null;
+
+  const ass = buildClipAss(
+    captions.cues,
+    clipStart,
+    clipEnd,
+    width,
+    height,
+    { highlightColor: highlightColor || "#FFFF00" },
+  );
+  if (!ass.includes("Dialogue:")) return null;
+
+  const assPath = join(dir, "subs.ass");
+  await writeFile(assPath, ass, "utf-8");
+  return assPath;
+}
+
+/** Escape path for ffmpeg subtitles filter (Windows-safe). */
+export function escapeFfmpegSubPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/").replace(/:/g, "\\:");
+}
+
+/** Validate a hex highlight color from user input. */
+export function parseHighlightColor(value: string | null | undefined): string {
+  if (!value) return "#FFFF00";
+  const v = value.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(v)) return v.toUpperCase();
+  return "#FFFF00";
+}
