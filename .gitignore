@@ -45,6 +45,7 @@ Thumbs.db
 
 # agent / temp
 agent-tools/
+*-player-script.js
 
 .vercel
 .env*
