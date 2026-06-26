@@ -21,3 +21,15 @@ export async function fetchFromClipWorker(
     return null;
   }
 }
+
+export function buildClipWorkerQuery(params: URLSearchParams): string {
+  return params.toString();
+}
+
+/** Fetch rendered MP4 from worker `/clip` endpoint. */
+export async function fetchClipFromWorker(
+  params: URLSearchParams,
+  timeoutMs = 280_000,
+): Promise<Response | null> {
+  return fetchFromClipWorker(`/clip?${params}`, timeoutMs);
+}

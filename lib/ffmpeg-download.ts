@@ -1,0 +1,112 @@
+import { spawn } from "child_process";
+import { fetchStreamsServer } from "@/lib/youtube-streams";
+import type { StreamUrls } from "@/lib/stream-pick";
+import { getFfmpegPath } from "@/lib/ytdlp";
+
+const YT_HEADERS =
+  "Referer: https://www.youtube.com/\\r\\nOrigin: https://www.youtube.com\\r\\n";
+
+function runFfmpeg(args: string[]): Promise<void> {
+  const ffmpeg = getFfmpegPath();
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn(ffmpeg, args, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+
+    proc.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(stderr.trim() || `ffmpeg saiu com código ${code}`));
+    });
+
+    proc.on("error", reject);
+  });
+}
+
+function sectionInputArgs(
+  streams: StreamUrls,
+  start: number,
+  duration: number,
+): string[] {
+  if (streams.combined || !streams.audioUrl) {
+    return [
+      "-ss",
+      String(start),
+      "-headers",
+      YT_HEADERS,
+      "-i",
+      streams.videoUrl,
+      "-t",
+      String(duration),
+    ];
+  }
+
+  return [
+    "-ss",
+      String(start),
+    "-headers",
+    YT_HEADERS,
+    "-i",
+    streams.videoUrl,
+    "-ss",
+    String(start),
+    "-headers",
+    YT_HEADERS,
+    "-i",
+    streams.audioUrl,
+    "-t",
+    String(duration),
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
+    "-shortest",
+  ];
+}
+
+/** Download a YouTube clip section using Innertube stream URLs (works on Vercel). */
+export async function downloadClipSectionWithStreams(
+  videoId: string,
+  start: number,
+  end: number,
+  outputPath: string,
+  streams?: StreamUrls | null,
+): Promise<void> {
+  const resolved = streams ?? (await fetchStreamsServer(videoId));
+  if (!resolved?.videoUrl) {
+    throw new Error("URL de stream indisponível");
+  }
+
+  const duration = end - start;
+  const base = ["-y", "-hide_banner", ...sectionInputArgs(resolved, start, duration)];
+
+  try {
+    await runFfmpeg([
+      ...base,
+      "-c",
+      "copy",
+      "-avoid_negative_ts",
+      "make_zero",
+      outputPath,
+    ]);
+    return;
+  } catch {
+    await runFfmpeg([
+      ...base,
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-crf",
+      "28",
+      "-c:a",
+      "aac",
+      "-movflags",
+      "+faststart",
+      outputPath,
+    ]);
+  }
+}

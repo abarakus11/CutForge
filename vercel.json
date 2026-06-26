@@ -5,6 +5,15 @@
     },
     "app/api/stream-proxy/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/clips/render/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/clips/preview/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/clips/download/route.ts": {
+      "maxDuration": 300
     }
   }
 }

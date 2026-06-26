@@ -239,6 +239,23 @@ export async function renderClipClient(
   if (highlightColor) serverParams.set("highlightColor", highlightColor);
   if (captionFont) serverParams.set("captionFont", captionFont);
 
+  const workerBase = process.env.NEXT_PUBLIC_CLIP_WORKER_URL?.replace(/\/$/, "");
+
+  if (workerBase) {
+    try {
+      onProgress?.(8, "Processando no worker…");
+      const workerRes = await fetch(`${workerBase}/clip?${serverParams}`, {
+        signal: AbortSignal.timeout(300000),
+      });
+      if (workerRes.ok) {
+        onProgress?.(100, "Pronto!");
+        return workerRes.blob();
+      }
+    } catch {
+      // tenta API Vercel
+    }
+  }
+
   try {
     onProgress?.(8, "Processando no servidor…");
     const stopTicker = startProgressTicker(

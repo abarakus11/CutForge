@@ -12,6 +12,8 @@ import {
 import { encodeSettingsForQuality } from "@/lib/video-quality";
 import { parseHighlightColor, writeClipAssFile } from "@/lib/captions";
 import { assFilterForPath } from "@/lib/ass-text";
+import { downloadClipSectionWithStreams } from "@/lib/ffmpeg-download";
+import { fetchYouTubeMetaHttp } from "@/lib/youtube-meta";
 import {
   getCachedStreamUrl,
   getFfmpegPath,
@@ -168,7 +170,14 @@ async function extractRawSegment(
     const rawFile = await findRawFile(dir);
     if (rawFile) return rawFile;
   } catch (err) {
-    console.warn("[render-clip] yt-dlp section failed, trying ffmpeg:", err);
+    console.warn("[render-clip] yt-dlp section failed:", err);
+  }
+
+  try {
+    await downloadClipSectionWithStreams(videoId, start, end, rawPath);
+    return rawPath;
+  } catch (err) {
+    console.warn("[render-clip] innertube streams failed, trying yt-dlp URL:", err);
   }
 
   await downloadSectionWithFfmpeg(videoId, start, end, rawPath);
@@ -220,15 +229,20 @@ async function reformatForPlatform(
 }
 
 export async function getVideoDuration(videoId: string): Promise<number> {
-  const info = (await ytDlp(watchUrl(videoId), {
-    dumpSingleJson: true,
-  })) as { duration?: number };
+  try {
+    const info = (await ytDlp(watchUrl(videoId), {
+      dumpSingleJson: true,
+    })) as { duration?: number };
 
-  if (!info.duration || info.duration <= 0) {
-    throw new Error("Duração do vídeo indisponível");
+    if (info.duration && info.duration > 0) return info.duration;
+  } catch {
+    // yt-dlp indisponível (ex.: Vercel) — Innertube
   }
 
-  return info.duration;
+  const meta = await fetchYouTubeMetaHttp(videoId);
+  if (meta.duration > 0) return meta.duration;
+
+  throw new Error("Duração do vídeo indisponível");
 }
 
 export function clampClipRange(

@@ -8,7 +8,8 @@ import {
   buildCropScaleFilter,
   PLATFORM_OUTPUT,
 } from "@/lib/platform-output";
-import { getCachedStreamUrl, getFfmpegPath } from "@/lib/ytdlp";
+import { getFfmpegPath } from "@/lib/ytdlp";
+import { fetchStreamsServer } from "@/lib/youtube-streams";
 import { thumbnailTimestamp } from "@/lib/clip-thumbnail";
 
 interface ThumbnailOptions {
@@ -46,7 +47,9 @@ function runFfmpeg(args: string[]): Promise<void> {
 }
 
 async function getStreamUrl(videoId: string): Promise<string> {
-  return getCachedStreamUrl(videoId);
+  const streams = await fetchStreamsServer(videoId);
+  if (streams?.videoUrl) return streams.videoUrl;
+  throw new Error("URL de stream indisponível");
 }
 
 /** Extract a single JPEG frame cropped to the clip's platform format. */

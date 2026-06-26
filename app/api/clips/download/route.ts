@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isVercelRuntime } from "@/lib/youtube-meta";
 import { parsePlatformFormat } from "@/lib/platform-output";
 import { parseHighlightColor, parseCaptionFontSetting } from "@/lib/captions";
 import { renderClipToBuffer } from "@/lib/render-clip";
+import { fetchClipFromWorker } from "@/lib/worker-proxy";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 function sanitizeFilename(name: string): string {
@@ -19,17 +20,6 @@ function sanitizeFilename(name: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  if (isVercelRuntime()) {
-    return NextResponse.json(
-      {
-        error:
-          "Na Vercel o download é gerado no seu navegador. Atualize a página (Ctrl+Shift+R).",
-        clientOnly: true,
-      },
-      { status: 503 },
-    );
-  }
-
   const { searchParams } = request.nextUrl;
   const videoId = searchParams.get("videoId");
   const start = Number(searchParams.get("start"));
@@ -48,6 +38,28 @@ export async function GET(request: NextRequest) {
   }
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return NextResponse.json({ error: "Intervalo inválido" }, { status: 400 });
+  }
+
+  const workerParams = new URLSearchParams({
+    videoId,
+    start: String(Math.floor(start)),
+    end: String(Math.floor(end)),
+    format,
+    quality: "full",
+  });
+  if (captionLang) workerParams.set("captionLang", captionLang);
+  if (highlightColor) workerParams.set("highlightColor", highlightColor);
+  if (captionFont) workerParams.set("captionFont", captionFont);
+
+  const workerRes = await fetchClipFromWorker(workerParams);
+  if (workerRes?.body) {
+    const filename = `${sanitizeFilename(title)}.mp4`;
+    return new NextResponse(workerRes.body, {
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
   }
 
   try {

@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { parsePlatformFormat, parseRenderQuality } from "@/lib/platform-output";
 import { parseHighlightColor, parseCaptionFontSetting } from "@/lib/captions";
 import { renderClipToBuffer } from "@/lib/render-clip";
+import { fetchClipFromWorker } from "@/lib/worker-proxy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = request.nextUrl;
+function clipQueryFromRequest(searchParams: URLSearchParams) {
   const videoId = searchParams.get("videoId")?.trim();
   const start = Number(searchParams.get("start"));
   const end = Number(searchParams.get("end"));
@@ -20,54 +20,62 @@ export async function GET(request: NextRequest) {
   );
   const captionFont = parseCaptionFontSetting(searchParams.get("captionFont"));
 
-  if (!videoId || !/^[\w-]{11}$/.test(videoId)) {
+  return {
+    videoId,
+    start,
+    end,
+    format,
+    quality,
+    captionLang,
+    highlightColor,
+    captionFont,
+  };
+}
+
+function workerParamsFromClip(clip: ReturnType<typeof clipQueryFromRequest>) {
+  const params = new URLSearchParams({
+    videoId: clip.videoId!,
+    start: String(Math.floor(clip.start)),
+    end: String(Math.floor(clip.end)),
+    format: clip.format,
+    quality: clip.quality,
+  });
+  if (clip.captionLang) params.set("captionLang", clip.captionLang);
+  if (clip.highlightColor) params.set("highlightColor", clip.highlightColor);
+  if (clip.captionFont) params.set("captionFont", clip.captionFont);
+  return params;
+}
+
+export async function GET(request: NextRequest) {
+  const clip = clipQueryFromRequest(request.nextUrl.searchParams);
+
+  if (!clip.videoId || !/^[\w-]{11}$/.test(clip.videoId)) {
     return NextResponse.json({ error: "videoId inválido" }, { status: 400 });
   }
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+  if (!Number.isFinite(clip.start) || !Number.isFinite(clip.end) || clip.end <= clip.start) {
     return NextResponse.json({ error: "Intervalo inválido" }, { status: 400 });
   }
 
-  const workerUrl = process.env.CLIP_WORKER_URL?.replace(/\/$/, "");
-  if (workerUrl) {
-    try {
-      const params = new URLSearchParams({
-        videoId,
-        start: String(Math.floor(start)),
-        end: String(Math.floor(end)),
-        format,
-        quality,
-      });
-      if (captionLang) params.set("captionLang", captionLang);
-      if (highlightColor) params.set("highlightColor", highlightColor);
-      if (captionFont) params.set("captionFont", captionFont);
-      const res = await fetch(`${workerUrl}/clip?${params}`, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(280000),
-      });
-      if (res.ok && res.body) {
-        return new NextResponse(res.body, {
-          headers: {
-            "Content-Type": "video/mp4",
-            "Content-Disposition": 'attachment; filename="clip.mp4"',
-          },
-        });
-      }
-      console.warn("[clips/render] worker status", res.status);
-    } catch (err) {
-      console.warn("[clips/render] worker:", err);
-    }
+  const workerRes = await fetchClipFromWorker(workerParamsFromClip(clip));
+  if (workerRes?.body) {
+    return new NextResponse(workerRes.body, {
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Disposition": 'attachment; filename="clip.mp4"',
+      },
+    });
   }
 
   try {
     const buffer = await renderClipToBuffer({
-      videoId,
-      start,
-      end,
-      format,
-      quality,
-      captionLang,
-      highlightColor,
-      captionFont,
+      videoId: clip.videoId,
+      start: clip.start,
+      end: clip.end,
+      format: clip.format,
+      quality: clip.quality,
+      captionLang: clip.captionLang,
+      highlightColor: clip.highlightColor,
+      captionFont: clip.captionFont,
     });
 
     return new NextResponse(new Uint8Array(buffer), {

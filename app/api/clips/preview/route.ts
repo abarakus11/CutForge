@@ -3,25 +3,15 @@ import {
   parsePlatformFormat,
   parseRenderQuality,
 } from "@/lib/platform-output";
-import { isVercelRuntime } from "@/lib/youtube-meta";
 import { parseHighlightColor, parseCaptionFontSetting } from "@/lib/captions";
 import { renderClipToBuffer } from "@/lib/render-clip";
+import { fetchClipFromWorker } from "@/lib/worker-proxy";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
-  if (isVercelRuntime()) {
-    return NextResponse.json(
-      {
-        error:
-          "Na Vercel o corte é gerado no seu navegador. Atualize a página (Ctrl+Shift+R).",
-        clientOnly: true,
-      },
-      { status: 503 },
-    );
-  }
-
   const { searchParams } = request.nextUrl;
   const videoId = searchParams.get("videoId");
   const start = Number(searchParams.get("start"));
@@ -40,6 +30,28 @@ export async function GET(request: NextRequest) {
   }
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
     return NextResponse.json({ error: "Intervalo inválido" }, { status: 400 });
+  }
+
+  const workerParams = new URLSearchParams({
+    videoId,
+    start: String(Math.floor(start)),
+    end: String(Math.floor(end)),
+    format,
+    quality,
+  });
+  if (captionLang) workerParams.set("captionLang", captionLang);
+  if (highlightColor) workerParams.set("highlightColor", highlightColor);
+  if (captionFont) workerParams.set("captionFont", captionFont);
+
+  const workerRes = await fetchClipFromWorker(workerParams);
+  if (workerRes?.body) {
+    return new NextResponse(workerRes.body, {
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Disposition": "inline",
+        "Cache-Control": "private, max-age=86400",
+      },
+    });
   }
 
   try {
