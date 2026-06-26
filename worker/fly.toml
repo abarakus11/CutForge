@@ -12,6 +12,10 @@ primary_region = "gru"
   min_machines_running = 1
 
 [[vm]]
-  memory = "512mb"
+  memory = "1024mb"
   cpu_kind = "shared"
   cpus = 1
+
+[env]
+  WHISPER_MODEL = "small"
+  PORT = "3001"

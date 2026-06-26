@@ -12,7 +12,7 @@ COPY lib/captions-core.ts lib/transcription-langs.ts ./lib/
 COPY worker/package.json ./worker/
 RUN cd worker && npm install
 
-COPY worker/server.ts worker/platform.ts worker/clip-render.ts worker/captions.ts worker/transcribe.ts worker/transcribe.py ./worker/
+COPY worker/server.ts worker/platform.ts worker/clip-render.ts worker/captions.ts worker/transcribe.ts worker/transcribe.py worker/thumbnail.ts worker/streams.ts ./worker/
 
 ENV PORT=3001
 ENV YT_DLP_PATH=/usr/local/bin/yt-dlp

@@ -5,4 +5,12 @@ services:
     dockerfilePath: ./worker/Dockerfile
     dockerContext: .
     plan: free
+    region: oregon
     healthCheckPath: /health
+    envVars:
+      - key: WHISPER_MODEL
+        value: small
+      - key: PORT
+        value: "3001"
+      - key: YT_DLP_PATH
+        value: /usr/local/bin/yt-dlp
