@@ -153,3 +153,81 @@ export async function writeWorkerClipAss(
 export function escapeFfmpegSubPath(filePath: string): string {
   return filePath.replace(/\\/g, "/").replace(/:/g, "\\:");
 }
+
+const LANG_LABELS: Record<string, string> = {
+  pt: "Português",
+  en: "Inglês",
+  es: "Espanhol",
+  fr: "Francês",
+  de: "Alemão",
+  it: "Italiano",
+  ja: "Japonês",
+  ko: "Coreano",
+  zh: "Chinês",
+  "zh-Hans": "Chinês (simplificado)",
+  "zh-Hant": "Chinês (tradicional)",
+  ar: "Árabe",
+  hi: "Hindi",
+  ru: "Russo",
+};
+
+function labelForLang(lang: string): string {
+  return LANG_LABELS[lang] || LANG_LABELS[lang.split("-")[0]] || lang;
+}
+
+/** List available subtitle languages via yt-dlp metadata. */
+export async function listWorkerCaptionLanguages(
+  ytDlp: YtDlpFn,
+  videoId: string,
+  ytFlags: Record<string, string | boolean>,
+): Promise<Array<{ lang: string; label: string; auto: boolean }>> {
+  const meta = (await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
+    ...ytFlags,
+    dumpSingleJson: true,
+  })) as {
+    subtitles?: Record<string, unknown>;
+    automatic_captions?: Record<string, unknown>;
+  };
+
+  const manual = Object.keys(meta.subtitles || {}).map((lang) => ({
+    lang,
+    label: labelForLang(lang),
+    auto: false,
+  }));
+  const auto = Object.keys(meta.automatic_captions || {}).map((lang) => ({
+    lang,
+    label: `${labelForLang(lang)} (automática)`,
+    auto: true,
+  }));
+
+  return [...manual, ...auto];
+}
+
+/** Build ASS text for a clip (no ffmpeg). */
+export async function buildWorkerClipAssText(
+  ytDlp: YtDlpFn,
+  videoId: string,
+  clipStart: number,
+  clipEnd: number,
+  width: number,
+  height: number,
+  dir: string,
+  ytFlags: Record<string, string | boolean>,
+  captionLang?: string | null,
+  highlightColor?: string | null,
+): Promise<string | null> {
+  const assPath = await writeWorkerClipAss(
+    ytDlp,
+    videoId,
+    clipStart,
+    clipEnd,
+    width,
+    height,
+    dir,
+    ytFlags,
+    captionLang,
+    highlightColor,
+  );
+  if (!assPath) return null;
+  return readFile(assPath, "utf-8");
+}

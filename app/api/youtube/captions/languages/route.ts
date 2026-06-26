@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseYouTubeId } from "@/services/youtube";
 import { listSubtitleLanguages } from "@/lib/captions";
+import { fetchFromClipWorker } from "@/lib/worker-proxy";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,6 +16,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const workerRes = await fetchFromClipWorker(
+      `/captions/languages?videoId=${encodeURIComponent(videoId)}`,
+    );
+    if (workerRes) {
+      return NextResponse.json(await workerRes.json());
+    }
+
     const tracks = await listSubtitleLanguages(videoId);
     return NextResponse.json({ tracks });
   } catch (err) {

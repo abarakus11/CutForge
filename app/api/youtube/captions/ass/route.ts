@@ -9,6 +9,7 @@ import {
   parsePlatformFormat,
   parseRenderQuality,
 } from "@/lib/platform-output";
+import { fetchFromClipWorker } from "@/lib/worker-proxy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +43,31 @@ export async function GET(request: NextRequest) {
       : outputForQuality(format, quality);
 
   try {
+    const workerParams = new URLSearchParams({
+      videoId,
+      start: String(start),
+      end: String(end),
+      width: String(dims.width),
+      height: String(dims.height),
+      captionLang: captionLang || "auto",
+      highlightColor,
+    });
+    const workerRes = await fetchFromClipWorker(
+      `/captions/ass?${workerParams}`,
+      60_000,
+    );
+    if (workerRes) {
+      const ass = await workerRes.text();
+      if (ass.includes("Dialogue:")) {
+        return new NextResponse(ass, {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "private, max-age=3600",
+          },
+        });
+      }
+    }
+
     const captions = await loadVideoCaptions(videoId, captionLang);
     if (!captions) {
       return NextResponse.json(

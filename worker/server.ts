@@ -16,7 +16,10 @@ import {
   parseRenderQuality,
   outputForQuality,
 } from "./platform";
-import { writeWorkerClipAss } from "./captions";
+import {
+  buildWorkerClipAssText,
+  listWorkerCaptionLanguages,
+} from "./captions";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { tmpdir } from "os";
@@ -120,6 +123,63 @@ app.get("/streams", async (req, res) => {
   } catch (err) {
     console.error("[worker/streams]", err);
     return res.status(500).json({ error: "falha ao obter streams" });
+  }
+});
+
+app.get("/captions/languages", async (req, res) => {
+  const videoId = String(req.query.videoId || "");
+  if (!/^[\w-]{11}$/.test(videoId)) {
+    return res.status(400).json({ error: "videoId inválido" });
+  }
+
+  try {
+    const tracks = await listWorkerCaptionLanguages(ytDlp, videoId, YT_FLAGS);
+    return res.json({ tracks });
+  } catch (err) {
+    console.error("[worker/captions/languages]", err);
+    return res.status(500).json({ error: "falha ao listar legendas" });
+  }
+});
+
+app.get("/captions/ass", async (req, res) => {
+  const videoId = String(req.query.videoId || "");
+  const start = Number(req.query.start);
+  const end = Number(req.query.end);
+  const width = Number(req.query.width);
+  const height = Number(req.query.height);
+  const captionLang = String(req.query.captionLang || "auto");
+  const highlightColor = String(req.query.highlightColor || "#FFFF00");
+
+  if (!/^[\w-]{11}$/.test(videoId) || !Number.isFinite(start) || !Number.isFinite(end)) {
+    return res.status(400).json({ error: "parâmetros inválidos" });
+  }
+  if (!width || !height) {
+    return res.status(400).json({ error: "width/height obrigatórios" });
+  }
+
+  const dir = await mkdtemp(join(tmpdir(), "ass-"));
+  try {
+    const ass = await buildWorkerClipAssText(
+      ytDlp,
+      videoId,
+      start,
+      end,
+      width,
+      height,
+      dir,
+      YT_FLAGS,
+      captionLang,
+      highlightColor,
+    );
+    if (!ass || !ass.includes("Dialogue:")) {
+      return res.status(404).json({ error: "legendas indisponíveis" });
+    }
+    res.type("text/plain; charset=utf-8").send(ass);
+  } catch (err) {
+    console.error("[worker/captions/ass]", err);
+    res.status(500).json({ error: "falha ao gerar legendas" });
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 });
 
