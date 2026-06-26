@@ -5,7 +5,7 @@ import {
   outputForQuality,
   type RenderQuality,
 } from "@/lib/platform-output";
-import { getYouTubeStreamUrls } from "@/lib/innertube-shared";
+import { getYouTubeStreamUrls } from "@/services/youtube-stream-client";
 import { buildClipAssClient } from "@/services/captions-client";
 import { parseHighlightColor } from "@/lib/captions-core";
 
@@ -205,6 +205,24 @@ export async function renderClipClient(
   }
 
   onProgress?.(5, "Obtendo stream do YouTube…");
+
+  const workerUrl = process.env.NEXT_PUBLIC_CLIP_WORKER_URL?.replace(/\/$/, "");
+  if (workerUrl) {
+    onProgress?.(8, "Gerando corte no servidor de vídeo…");
+    const params = new URLSearchParams({
+      videoId,
+      start: String(range.start),
+      end: String(range.end),
+    });
+    const res = await fetch(`${workerUrl}/clip?${params}`);
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error || "Falha ao gerar corte no worker");
+    }
+    onProgress?.(100, "Pronto!");
+    return res.blob();
+  }
+
   const streams = await getYouTubeStreamUrls(videoId);
 
   const { width, height } = outputForQuality(format, quality);

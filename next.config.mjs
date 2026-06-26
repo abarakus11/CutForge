@@ -5,6 +5,7 @@ const nextConfig = {
     // Garante render no navegador em todo deploy Vercel (build-time).
     NEXT_PUBLIC_FORCE_CLIENT_RENDER:
       process.env.VERCEL === "1" ? "1" : "0",
+    NEXT_PUBLIC_CLIP_WORKER_URL: process.env.CLIP_WORKER_URL || "",
   },
   images: {
     remotePatterns: [
