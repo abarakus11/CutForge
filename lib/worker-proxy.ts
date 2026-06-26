@@ -3,12 +3,8 @@ export function getClipWorkerUrl(): string | null {
   const raw = process.env.CLIP_WORKER_URL?.replace(/\/$/, "") || "";
   if (!raw) return null;
 
-  // Ignora túneis locais/expirados que quebram produção.
-  if (
-    raw.includes("trycloudflare.com") ||
-    raw.includes("localhost") ||
-    raw.includes("127.0.0.1")
-  ) {
+  // Ignora URLs locais que não funcionam em produção.
+  if (raw.includes("localhost") || raw.includes("127.0.0.1")) {
     return null;
   }
 
