@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { cn } from "@/utils/cn";
 import { BRAND } from "@/config/constants";
 
@@ -27,7 +26,7 @@ const SIZES: Record<
   },
 };
 
-/** Logo oficial CutForge AI (PNG 3D, fundo transparente). */
+/** Logo oficial CutForge AI (PNG transparente — img nativo preserva alpha). */
 export function Logo({
   className,
   variant = "compact",
@@ -36,14 +35,15 @@ export function Logo({
   const size = SIZES[variant];
 
   return (
-    <Image
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
       src={BRAND.logo}
       alt={BRAND.logoAlt}
       width={size.width}
       height={size.height}
-      unoptimized
-      className={cn("bg-transparent", size.className, className)}
-      priority={priority}
+      decoding="async"
+      fetchPriority={priority ? "high" : "auto"}
+      className={cn(size.className, className)}
     />
   );
 }

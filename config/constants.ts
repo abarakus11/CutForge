@@ -112,7 +112,7 @@ export const BRAND = {
   name: "CutForge AI",
   slogan: "Transforme qualquer vídeo em cortes virais em segundos.",
   author: "SheikDev",
-  logo: "/brand/logo.png?v=2",
+  logo: "/brand/logo.png?v=3",
   logoAlt:
     "CutForge AI — Transforme qualquer vídeo em cortes virais em segundos.",
 } as const;
