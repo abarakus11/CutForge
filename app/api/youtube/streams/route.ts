@@ -16,7 +16,11 @@ export async function GET(request: NextRequest) {
     const streams = await fetchStreamsServer(videoId);
     if (!streams) {
       return NextResponse.json(
-        { error: "Não foi possível obter o stream do vídeo" },
+        {
+          error:
+            "Não foi possível obter o stream do vídeo. Configure CLIP_WORKER_URL na Vercel (veja worker/README.md).",
+          needsWorker: true,
+        },
         { status: 502 },
       );
     }

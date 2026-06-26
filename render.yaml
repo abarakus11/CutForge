@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: cutforge-clip-worker
+    runtime: docker
+    dockerfilePath: ./worker/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health

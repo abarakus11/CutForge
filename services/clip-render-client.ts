@@ -223,7 +223,13 @@ export async function renderClipClient(
     return res.blob();
   }
 
-  const streams = await getYouTubeStreamUrls(videoId);
+  const streams = await getYouTubeStreamUrls(videoId).catch((err) => {
+    throw new Error(
+      err instanceof Error
+        ? `${err.message}. Na Vercel é preciso configurar CLIP_WORKER_URL — veja worker/README.md`
+        : "Não foi possível obter o stream do vídeo",
+    );
+  });
 
   const { width, height } = outputForQuality(format, quality);
   const hl = parseHighlightColor(highlightColor ?? undefined);
