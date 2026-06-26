@@ -175,15 +175,17 @@ export async function renderClipBlob(
     end: String(Math.floor(end)),
     format,
     quality,
-    captionLang: captions?.language || "auto",
-    highlightColor: captions?.highlightColor || "#FFFF00",
-    captionFont: captions?.fontFamily || "arial-black",
   });
+  if (quality === "full") {
+    params.set("captionLang", captions?.language || "auto");
+    params.set("highlightColor", captions?.highlightColor || "#FFFF00");
+    params.set("captionFont", captions?.fontFamily || "arial-black");
+  }
   if (videoDuration && videoDuration > 0) {
     params.set("duration", String(Math.floor(videoDuration)));
   }
 
-  onProgress?.(5, "Gerando prévia no servidor…");
+  onProgress?.(5, "Cortando trecho no servidor…");
   let serverBlob = await renderViaServerRender(params);
   if (!serverBlob) {
     serverBlob = await renderViaServerPreview(params);

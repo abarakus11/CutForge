@@ -11,7 +11,7 @@ import { formatTimecode, formatScore, formatDuration } from "@/utils/format";
 import { downloadClip } from "@/utils/download";
 import { renderClipBlob } from "@/utils/download";
 import { shouldUseClientRender } from "@/lib/render-env";
-import { prefetchFfmpegClient, youtubeEmbedPreviewUrl } from "@/services/clip-render-client";
+import { prefetchFfmpegClient } from "@/services/clip-render-client";
 import {
   aspectLabelForFormat,
   modalWidthClassForFormat,
@@ -40,7 +40,6 @@ export function ClipPreviewModal({
   const [loading, setLoading] = useState(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
-  const [embedSrc, setEmbedSrc] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState("");
   const previewBlobRef = useRef<Blob | null>(null);
@@ -69,18 +68,19 @@ export function ClipPreviewModal({
   useEffect(() => {
     if (!clipId || clipStart == null || clipEnd == null) return;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), PREVIEW_TIMEOUT_MS);
+    let cancelled = false;
+    const timeout = setTimeout(() => {
+      cancelled = true;
+      setPreviewError("A geração da prévia demorou demais. Tente baixar o corte.");
+      setLoading(false);
+    }, PREVIEW_TIMEOUT_MS);
 
     setLoading(true);
     setPreviewError(null);
     setPreviewSrc(null);
-    setEmbedSrc(
-      youtubeEmbedPreviewUrl(video.id, clipStart, clipEnd),
-    );
     previewBlobRef.current = null;
     setProgress(0);
-    setProgressMsg("Gerando prévia…");
+    setProgressMsg("Cortando e formatando o vídeo…");
 
     renderClipBlob(
       video.id,
@@ -90,24 +90,32 @@ export function ClipPreviewModal({
       video.duration,
       captions,
       (pct, msg) => {
-        setProgress(pct);
-        setProgressMsg(msg);
+        if (!cancelled) {
+          setProgress(pct);
+          setProgressMsg(msg);
+        }
       },
-      "full",
+      "preview",
     )
       .then((blob) => {
-        if (controller.signal.aborted) return;
+        if (cancelled) return;
         previewBlobRef.current = blob;
         setPreviewSrc(URL.createObjectURL(blob));
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        if (cancelled) return;
+        setPreviewError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível gerar a prévia do corte.",
+        );
         setLoading(false);
       })
       .finally(() => clearTimeout(timeout));
 
     return () => {
-      controller.abort();
+      cancelled = true;
       clearTimeout(timeout);
     };
   }, [
@@ -204,17 +212,6 @@ export function ClipPreviewModal({
               className="clip-preview-frame relative overflow-hidden rounded-xl bg-black"
               style={frameStyle}
             >
-              {embedSrc && !previewSrc && (
-                <iframe
-                  key={embedSrc}
-                  src={embedSrc}
-                  title={clip.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="absolute inset-0 h-full w-full border-0"
-                />
-              )}
-
               {previewSrc && !previewError && (
                 <video
                   key={previewSrc}
@@ -241,11 +238,15 @@ export function ClipPreviewModal({
               )}
 
               {showLoader && (
-                <div className="absolute inset-0 z-30 grid place-items-end bg-gradient-to-t from-black/80 via-transparent to-transparent px-4 pb-4">
-                  <div className="flex w-full max-w-xs flex-col items-center gap-2 text-center text-white/80">
-                    <Loader2 className="h-5 w-5 animate-spin text-spark-violet" />
-                    <span className="text-xs">
-                      {progressMsg || "Gerando MP4 com legendas…"}
+                <div className="absolute inset-0 z-30 grid place-items-center bg-ink-600 p-6">
+                  <div className="flex w-full max-w-xs flex-col items-center gap-3 text-center text-white/80">
+                    <Loader2 className="h-8 w-8 animate-spin text-spark-violet" />
+                    <span className="text-sm font-medium">
+                      {progressMsg || "Gerando corte em MP4…"}
+                    </span>
+                    <span className="text-xs text-white/45">
+                      O trecho será recortado e formatado para{" "}
+                      {aspectLabelForFormat(clipFormat)} — não é só o player do YouTube.
                     </span>
                     {progress > 0 && (
                       <div className="w-full">

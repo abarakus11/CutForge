@@ -5,7 +5,7 @@ import { PLATFORM_OUTPUT } from "@/lib/platform-output";
 /** Display width (px) for the player frame in the modal. */
 function displayWidthForFormat(format: PlatformId): number {
   if (format === "shorts" || format === "reels" || format === "tiktok") {
-    return 300;
+    return 340;
   }
   if (format === "twitter") return 360;
   return 640;

@@ -285,21 +285,23 @@ export async function renderClipClient(
   const hl = parseHighlightColor(highlightColor ?? undefined);
   const outputName = "output.mp4";
 
-  onProgress?.(10, "Transcrevendo fala do corte…");
   let assContent: string | null = null;
-  try {
-    assContent = await buildClipAssClient(
-      videoId,
-      range.start,
-      range.end,
-      width,
-      height,
-      captionLang,
-      hl,
-      captionFont,
-    );
-  } catch {
-    assContent = null;
+  if (quality !== "preview") {
+    onProgress?.(10, "Transcrevendo fala do corte…");
+    try {
+      assContent = await buildClipAssClient(
+        videoId,
+        range.start,
+        range.end,
+        width,
+        height,
+        captionLang,
+        hl,
+        captionFont,
+      );
+    } catch {
+      assContent = null;
+    }
   }
 
   const ffmpeg = await getFfmpeg(onProgress);

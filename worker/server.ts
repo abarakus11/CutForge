@@ -273,16 +273,19 @@ app.get("/clip", async (req, res) => {
     await downloadClipSection(videoId, start, end, raw);
 
     const { width, height } = outputForQuality(format, quality);
-    const assPath = await writeWorkerClipAssFromMedia(
-      raw,
-      duration,
-      width,
-      height,
-      dir,
-      captionLang,
-      highlightColor,
-      captionFont,
-    );
+    let assPath: string | null = null;
+    if (quality !== "preview") {
+      assPath = await writeWorkerClipAssFromMedia(
+        raw,
+        duration,
+        width,
+        height,
+        dir,
+        captionLang,
+        highlightColor,
+        captionFont,
+      );
+    }
 
     await formatClipForPlatform(raw, out, format, quality, assPath);
 
