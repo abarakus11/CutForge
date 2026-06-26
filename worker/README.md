@@ -1,45 +1,39 @@
-# Clip Worker — download na Vercel
+# Clip Worker
 
-A Vercel **não consegue** baixar vídeos do YouTube (IPs bloqueados).  
-Este worker roda em um servidor com **yt-dlp + ffmpeg** e resolve o download.
+Worker de vídeo com yt-dlp + ffmpeg. Na Vercel o download passa por `/api/clips/render`, que usa `CLIP_WORKER_URL`.
 
-## Deploy no Render (grátis)
+## Já configurado
 
-1. Crie conta em [render.com](https://render.com)
-2. **New → Web Service** → conecte o repo `CutForge`
-3. Configuração:
-   - **Root Directory:** `worker` (ou use Docker abaixo)
-   - **Runtime:** Docker
-   - **Dockerfile Path:** `worker/Dockerfile`
-   - **Docker Build Context:** `.` (raiz do repo)
-4. Plano **Free** → Create Web Service
-5. Copie a URL (ex: `https://cutforge-worker.onrender.com`)
+- `CLIP_WORKER_URL` está definido na Vercel (produção)
+- Deploy do app: https://cut-forge.vercel.app
 
-## Configurar na Vercel
-
-1. Painel Vercel → projeto **cut-forge** → Settings → Environment Variables
-2. Adicione:
-   - `CLIP_WORKER_URL` = `https://cutforge-worker.onrender.com`
-3. **Redeploy** o projeto
-
-## Testar
+## Rodar localmente
 
 ```bash
-curl "https://SEU-WORKER.onrender.com/health"
-curl "https://SEU-WORKER.onrender.com/streams?videoId=6YxnJbowEJ8"
+npm run worker:install
+npm run worker
 ```
 
-## Rodar localmente (alternativa)
+## Deploy permanente (Render)
+
+O repositório inclui `render.yaml` na raiz. No [Render](https://render.com):
+
+1. **New → Blueprint** → conecte o repo `CutForge`
+2. Após o deploy, copie a URL do serviço `cutforge-clip-worker`
+3. Atualize `CLIP_WORKER_URL` na Vercel:
 
 ```bash
-cd worker && npm install && npx tsx server.ts
-# http://localhost:3001
+npx vercel env rm CLIP_WORKER_URL production
+echo https://SEU-WORKER.onrender.com | npx vercel env add CLIP_WORKER_URL production
+npx vercel --prod
 ```
 
-No `.env.local` da Vercel/local:
+## Deploy no Fly.io
 
-```
-CLIP_WORKER_URL=http://localhost:3001
+```bash
+cd worker
+fly launch --no-deploy
+fly deploy
 ```
 
 ## Endpoints

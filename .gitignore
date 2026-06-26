@@ -1,5 +1,6 @@
 # dependencies
 /node_modules
+/worker/node_modules
 /.pnp
 .pnp.js
 
@@ -44,3 +45,6 @@ Thumbs.db
 
 # agent / temp
 agent-tools/
+
+.vercel
+.env*
