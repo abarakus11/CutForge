@@ -1,6 +1,18 @@
 /** Proxy requests to the clip worker (yt-dlp + ffmpeg). */
 export function getClipWorkerUrl(): string | null {
-  return process.env.CLIP_WORKER_URL?.replace(/\/$/, "") || null;
+  const raw = process.env.CLIP_WORKER_URL?.replace(/\/$/, "") || "";
+  if (!raw) return null;
+
+  // Ignora túneis locais/expirados que quebram produção.
+  if (
+    raw.includes("trycloudflare.com") ||
+    raw.includes("localhost") ||
+    raw.includes("127.0.0.1")
+  ) {
+    return null;
+  }
+
+  return raw;
 }
 
 export async function fetchFromClipWorker(

@@ -18,9 +18,17 @@ export function getYtDlpPath() {
 }
 
 import ffmpegStatic from "ffmpeg-static";
+import { chmodSync, existsSync } from "fs";
 
 export function getFfmpegPath() {
   if (typeof ffmpegStatic === "string" && ffmpegStatic) {
+    if (existsSync(ffmpegStatic)) {
+      try {
+        chmodSync(ffmpegStatic, 0o755);
+      } catch {
+        // permissão já ok
+      }
+    }
     return ffmpegStatic;
   }
 

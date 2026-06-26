@@ -15,6 +15,7 @@ import { assFilterForPath } from "@/lib/ass-text";
 import { downloadClipSectionWithStreams } from "@/lib/ffmpeg-download";
 import { configureYtdlForServerless } from "@/lib/ytdl-vercel";
 import { isVercelRuntime, fetchYouTubeMetaHttp } from "@/lib/youtube-meta";
+import { getClipWorkerUrl } from "@/lib/worker-proxy";
 import {
   getCachedStreamUrl,
   getFfmpegPath,
@@ -316,7 +317,8 @@ export async function renderClipToBuffer({
     const { width, height } = outputForQuality(format, quality);
     let assPath: string | null = null;
 
-    if (quality !== "preview" || !isVercelRuntime()) {
+    const canBurnCaptions = !isVercelRuntime() || Boolean(getClipWorkerUrl());
+    if (canBurnCaptions && quality !== "preview") {
       assPath = await writeClipAssFile(
         videoId,
         range.start,

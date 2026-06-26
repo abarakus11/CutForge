@@ -89,7 +89,8 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("[clips/render]", err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[clips/render]", message, err);
     return NextResponse.json(
       { error: "Não foi possível gerar o corte. Tente novamente." },
       { status: 500 },
