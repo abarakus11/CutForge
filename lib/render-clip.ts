@@ -13,7 +13,7 @@ import { encodeSettingsForQuality } from "@/lib/video-quality";
 import { parseHighlightColor, writeClipAssFile } from "@/lib/captions";
 import { assFilterForPath } from "@/lib/ass-text";
 import { downloadClipSectionWithStreams } from "@/lib/ffmpeg-download";
-import { fetchYouTubeMetaHttp } from "@/lib/youtube-meta";
+import { fetchYouTubeMetaHttp, isVercelRuntime } from "@/lib/youtube-meta";
 import {
   getCachedStreamUrl,
   getFfmpegPath,
@@ -307,17 +307,21 @@ export async function renderClipToBuffer({
     );
 
     const { width, height } = outputForQuality(format, quality);
-    const assPath = await writeClipAssFile(
-      videoId,
-      range.start,
-      range.end,
-      width,
-      height,
-      dir,
-      captionLang,
-      hl,
-      font,
-    );
+    let assPath: string | null = null;
+
+    if (quality !== "preview" || !isVercelRuntime()) {
+      assPath = await writeClipAssFile(
+        videoId,
+        range.start,
+        range.end,
+        width,
+        height,
+        dir,
+        captionLang,
+        hl,
+        font,
+      );
+    }
 
     await reformatForPlatform(
       rawFile,

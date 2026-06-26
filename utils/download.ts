@@ -1,11 +1,8 @@
 /**
  * Client-side download helpers.
- *
- * On Vercel: renders in the browser via ffmpeg.wasm.
- * Locally: requests rendered MP4 from `/api/clips/download`.
+ * Tenta render no servidor (Vercel API / worker); se falhar, usa ffmpeg.wasm no navegador.
  */
 import type { CaptionSettings, Clip, PlatformId } from "@/types";
-import { shouldUseClientRender } from "@/lib/render-env";
 import { renderClipClient } from "@/services/clip-render-client";
 
 export function triggerBlobDownload(filename: string, blob: Blob) {
@@ -19,15 +16,6 @@ export function triggerBlobDownload(filename: string, blob: Blob) {
   setTimeout(() => URL.revokeObjectURL(href), 2000);
 }
 
-function triggerDownload(filename: string, href: string) {
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
 function sanitize(name: string): string {
   return (
     name
@@ -39,6 +27,34 @@ function sanitize(name: string): string {
   );
 }
 
+async function renderViaServerPreview(
+  params: URLSearchParams,
+): Promise<Blob | null> {
+  try {
+    const res = await fetch(`/api/clips/preview?${params}`, {
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (res.ok) return res.blob();
+  } catch {
+    // fallback no navegador
+  }
+  return null;
+}
+
+async function renderViaServerDownload(
+  params: URLSearchParams,
+): Promise<Blob | null> {
+  try {
+    const res = await fetch(`/api/clips/download?${params}`, {
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (res.ok) return res.blob();
+  } catch {
+    // fallback no navegador
+  }
+  return null;
+}
+
 async function fetchClipBlob(
   clip: Clip,
   videoId: string,
@@ -48,26 +64,13 @@ async function fetchClipBlob(
 ): Promise<Blob> {
   const format = (clip.format || "shorts") as PlatformId;
 
-  if (shouldUseClientRender()) {
-    return renderClipClient({
-      videoId,
-      start: clip.start,
-      end: clip.end,
-      format,
-      quality: "full",
-      captionLang: captions?.language || "auto",
-      highlightColor: captions?.highlightColor || "#FFFF00",
-      captionFont: captions?.fontFamily || "arial-black",
-      onProgress,
-    });
-  }
-
   const params = new URLSearchParams({
     videoId,
     start: String(clip.start),
     end: String(clip.end),
     title: clip.title,
     format,
+    quality: "full",
     captionLang: captions?.language || "auto",
     highlightColor: captions?.highlightColor || "#FFFF00",
     captionFont: captions?.fontFamily || "arial-black",
@@ -76,13 +79,25 @@ async function fetchClipBlob(
     params.set("duration", String(Math.floor(videoDuration)));
   }
 
-  const res = await fetch(`/api/clips/download?${params}`);
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error || "Falha ao baixar o corte");
+  onProgress?.(5, "Gerando corte no servidor…");
+  const serverBlob = await renderViaServerDownload(params);
+  if (serverBlob) {
+    onProgress?.(100, "Pronto!");
+    return serverBlob;
   }
 
-  return res.blob();
+  onProgress?.(8, "Servidor indisponível — renderizando no navegador…");
+  return renderClipClient({
+    videoId,
+    start: clip.start,
+    end: clip.end,
+    format,
+    quality: "full",
+    captionLang: captions?.language || "auto",
+    highlightColor: captions?.highlightColor || "#FFFF00",
+    captionFont: captions?.fontFamily || "arial-black",
+    onProgress,
+  });
 }
 
 /** Download a single clip as MP4. Reuses an existing blob when provided. */
@@ -136,20 +151,6 @@ export async function renderClipBlob(
   onProgress?: (pct: number, message: string) => void,
   quality: "preview" | "full" = "full",
 ): Promise<Blob> {
-  if (shouldUseClientRender()) {
-    return renderClipClient({
-      videoId,
-      start,
-      end,
-      format,
-      quality,
-      captionLang: captions?.language || "auto",
-      highlightColor: captions?.highlightColor || "#FFFF00",
-      captionFont: captions?.fontFamily || "arial-black",
-      onProgress,
-    });
-  }
-
   const params = new URLSearchParams({
     videoId,
     start: String(Math.floor(start)),
@@ -164,11 +165,23 @@ export async function renderClipBlob(
     params.set("duration", String(Math.floor(videoDuration)));
   }
 
-  const res = await fetch(`/api/clips/preview?${params}`);
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error || "Falha ao gerar a prévia");
+  onProgress?.(5, "Gerando prévia no servidor…");
+  const serverBlob = await renderViaServerPreview(params);
+  if (serverBlob) {
+    onProgress?.(100, "Pronto!");
+    return serverBlob;
   }
 
-  return res.blob();
+  onProgress?.(8, "Servidor indisponível — renderizando no navegador…");
+  return renderClipClient({
+    videoId,
+    start,
+    end,
+    format,
+    quality,
+    captionLang: captions?.language || "auto",
+    highlightColor: captions?.highlightColor || "#FFFF00",
+    captionFont: captions?.fontFamily || "arial-black",
+    onProgress,
+  });
 }

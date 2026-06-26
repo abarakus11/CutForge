@@ -76,9 +76,7 @@ export function ClipPreviewModal({
     setPreviewSrc(null);
     previewBlobRef.current = null;
     setProgress(0);
-    setProgressMsg(
-      clientRender ? "Preparando renderização no navegador…" : "Renderizando prévia…",
-    );
+    setProgressMsg("Gerando prévia…");
 
     renderClipBlob(
       video.id,

@@ -4,12 +4,23 @@ import type { StreamUrls } from "@/lib/stream-pick";
 export async function getYouTubeStreamUrls(
   videoId: string,
 ): Promise<StreamUrls> {
-  const res = await fetch(
-    `/api/youtube/streams?videoId=${encodeURIComponent(videoId)}`,
-  );
-  if (!res.ok) {
+  let lastError = "Não foi possível obter o stream do vídeo";
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 800 * attempt));
+    }
+
+    const res = await fetch(
+      `/api/youtube/streams?videoId=${encodeURIComponent(videoId)}`,
+    );
+    if (res.ok) {
+      return res.json() as Promise<StreamUrls>;
+    }
+
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error || "Não foi possível obter o stream do vídeo");
+    lastError = data.error || lastError;
   }
-  return res.json() as Promise<StreamUrls>;
+
+  throw new Error(lastError);
 }
