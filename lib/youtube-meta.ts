@@ -219,3 +219,56 @@ export async function downloadCaptionVttHttp(baseUrl: string): Promise<string> {
 
   return res.text();
 }
+
+/** Positions where "l" and "I" get confused when copying YouTube links. */
+function ambiguousLI(id: string): number[] {
+  return [...id].flatMap((c, i) => (c === "l" || c === "I" ? [i] : []));
+}
+
+/** Generate ID variants flipping l↔I (max 32 combos). */
+function* idVariants(id: string): Generator<string> {
+  yield id;
+  const positions = ambiguousLI(id);
+  if (!positions.length || positions.length > 5) return;
+
+  const total = 1 << positions.length;
+  for (let mask = 1; mask < total; mask++) {
+    const chars = id.split("");
+    for (let b = 0; b < positions.length; b++) {
+      if (mask & (1 << b)) {
+        const pos = positions[b];
+        chars[pos] = chars[pos] === "l" ? "I" : "l";
+      }
+    }
+    yield chars.join("");
+  }
+}
+
+async function oembedExists(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}&format=json`,
+      { cache: "no-store" },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve the canonical 11-char ID. Fixes l/I typos from copy-paste
+ * (e.g. tRLiw7wwli8 → tRLiw7wwIi8).
+ */
+export async function resolveYouTubeVideoId(rawId: string): Promise<string> {
+  for (const variant of idVariants(rawId)) {
+    if (await oembedExists(variant)) {
+      if (variant !== rawId) {
+        console.info(`[youtube] ID corrigido: ${rawId} → ${variant}`);
+      }
+      return variant;
+    }
+  }
+
+  throw new Error("Não foi possível ler os dados do vídeo no YouTube");
+}

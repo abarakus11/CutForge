@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseYouTubeId, thumbnailFor } from "@/services/youtube";
-import { fetchYouTubeMetaHttp } from "@/lib/youtube-meta";
+import {
+  fetchYouTubeMetaHttp,
+  resolveYouTubeVideoId,
+} from "@/lib/youtube-meta";
 import { watchUrl, ytDlp } from "@/lib/ytdlp";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 async function fetchMeta(videoId: string) {
-  // Vercel: yt-dlp binary often fails (IP block, subprocess limits) — use HTTP.
   if (process.env.VERCEL === "1") {
     return fetchYouTubeMetaHttp(videoId);
   }
@@ -39,20 +41,21 @@ async function fetchMeta(videoId: string) {
 
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get("url")?.trim();
-  const videoId =
+  const rawId =
     request.nextUrl.searchParams.get("videoId")?.trim() ||
     (url ? parseYouTubeId(url) : null);
 
-  if (!videoId || !/^[\w-]{11}$/.test(videoId)) {
+  if (!rawId || !/^[\w-]{11}$/.test(rawId)) {
     return NextResponse.json({ error: "Link do YouTube inválido" }, { status: 400 });
   }
 
   try {
+    const videoId = await resolveYouTubeVideoId(rawId);
     const info = await fetchMeta(videoId);
 
     return NextResponse.json({
       id: videoId,
-      url: url || watchUrl(videoId),
+      url: watchUrl(videoId),
       title: info.title,
       channel: info.channel,
       duration: Math.floor(info.duration),
@@ -60,8 +63,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     console.error("[youtube/meta]", err);
-    const msg =
-      err instanceof Error ? err.message : "Erro desconhecido";
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
     const isNotFound = msg.includes("ler os dados");
     return NextResponse.json(
       {

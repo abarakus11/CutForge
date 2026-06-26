@@ -116,7 +116,7 @@ export async function fetchVideoMeta(input: string): Promise<VideoMeta> {
   }
 
   const res = await fetch(
-    `/api/youtube/meta?videoId=${encodeURIComponent(videoId)}`,
+    `/api/youtube/meta?url=${encodeURIComponent(trimmed)}`,
   );
 
   if (!res.ok) {
