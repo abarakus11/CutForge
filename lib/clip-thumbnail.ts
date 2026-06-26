@@ -6,18 +6,6 @@ export function thumbnailTimestamp(start: number, end: number): number {
   return Math.floor(start + Math.max(1, offset));
 }
 
-/** Public worker base URL (browser + server). */
-export function getPublicClipWorkerUrl(): string | null {
-  const fromEnv =
-    (typeof window !== "undefined"
-      ? process.env.NEXT_PUBLIC_CLIP_WORKER_URL
-      : process.env.CLIP_WORKER_URL || process.env.NEXT_PUBLIC_CLIP_WORKER_URL) ||
-    "";
-
-  const base = fromEnv.replace(/\/$/, "");
-  return base || null;
-}
-
 function thumbnailParams(
   videoId: string,
   start: number,
@@ -34,30 +22,12 @@ function thumbnailParams(
   });
 }
 
-/** URL da API Next (proxy + storyboard fallback). */
-export function clipThumbnailApiUrl(
+/** Thumbnail via API Vercel (proxy → worker na nuvem). */
+export function clipThumbnailUrl(
   videoId: string,
   start: number,
   end: number,
   format: PlatformId,
 ): string {
   return `/api/clips/thumbnail?${thumbnailParams(videoId, start, end, format)}`;
-}
-
-/** Thumbnail URL for a clip moment — prefers worker (frame real do corte). */
-export function clipThumbnailUrl(
-  videoId: string,
-  start: number,
-  end: number,
-  format: PlatformId,
-  preferApi = false,
-): string {
-  const params = thumbnailParams(videoId, start, end, format);
-  const worker = getPublicClipWorkerUrl();
-
-  if (!preferApi && worker) {
-    return `${worker}/thumbnail?${params}`;
-  }
-
-  return `/api/clips/thumbnail?${params}`;
 }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Play, Download, Flame } from "lucide-react";
 import type { CaptionSettings, Clip, PlatformId } from "@/types";
-import { clipThumbnailUrl, clipThumbnailApiUrl } from "@/lib/clip-thumbnail";
+import { clipThumbnailUrl } from "@/lib/clip-thumbnail";
 import { TagBadge } from "@/components/ui/Badge";
 import { formatTimecode, formatDuration, formatScore } from "@/utils/format";
 import { downloadClip } from "@/utils/download";
@@ -84,19 +84,7 @@ export function ClipCard({
             alt={clip.title}
             loading="lazy"
             className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-            onError={() => {
-              const apiUrl = clipThumbnailApiUrl(
-                videoId,
-                clip.start,
-                clip.end,
-                clip.format || selectedFormat,
-              );
-              if (src !== apiUrl) {
-                setSrc(apiUrl);
-                return;
-              }
-              setImgError(true);
-            }}
+            onError={() => setImgError(true)}
           />
         ) : (
           <div className="h-full w-full bg-gradient-to-br from-ink-600 to-ink-500" />
