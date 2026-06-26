@@ -52,7 +52,7 @@ export async function formatClipForPlatform(
 
   if (subtitlesPath) {
     const escaped = subtitlesPath.replace(/\\/g, "/").replace(/:/g, "\\:");
-    vf += `,subtitles='${escaped}'`;
+    vf += `,ass='${escaped}'`;
   }
 
   const preset = quality === "full" ? "fast" : "ultrafast";

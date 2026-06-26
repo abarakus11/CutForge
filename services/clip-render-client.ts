@@ -290,7 +290,10 @@ export async function renderClipClient(
 
   let vf = buildCropScaleFilter(width, height);
   if (assContent) {
-    await ffmpeg.writeFile("subs.ass", new TextEncoder().encode(assContent));
+    const assBytes = new TextEncoder().encode(
+      assContent.startsWith("\uFEFF") ? assContent : `\uFEFF${assContent}`,
+    );
+    await ffmpeg.writeFile("subs.ass", assBytes);
     vf += ",subtitles=subs.ass";
   }
 

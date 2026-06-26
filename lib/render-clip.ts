@@ -184,7 +184,7 @@ async function reformatForPlatform(
   let vf = buildCropScaleFilter(width, height);
 
   if (subtitlesPath) {
-    vf += `,subtitles='${escapeFfmpegSubPath(subtitlesPath)}'`;
+    vf += `,ass='${escapeFfmpegSubPath(subtitlesPath)}'`;
   }
 
   const preset = quality === "full" ? "medium" : "fast";

@@ -488,7 +488,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Karaoke,${fontName},${fontSize},${baseAss},${highlightAss},&H00000000,&HC0000000,1,0,0,0,100,100,0,0,1,5,2,2,${marginH},${marginH},${marginV},1
+Style: Karaoke,${fontName},${fontSize},${baseAss},${highlightAss},&H00000000,&HC0000000,1,0,0,0,100,100,0,0,1,5,2,2,${marginH},${marginH},${marginV},-1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -506,7 +506,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     })
     .join("\n");
 
-  return `${header}${events}\n`;
+  return `\uFEFF${header}${events}\n`;
 }
 
 /** Validate a hex highlight color from user input. */
