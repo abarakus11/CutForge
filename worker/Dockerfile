@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3 
 WORKDIR /app
 COPY worker/package.json ./
 RUN npm install
-COPY worker/server.ts ./
+COPY worker/server.ts worker/platform.ts worker/clip-render.ts ./
 
 ENV PORT=3001
 ENV YT_DLP_PATH=/usr/local/bin/yt-dlp

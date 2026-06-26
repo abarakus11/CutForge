@@ -211,6 +211,7 @@ export async function renderClipClient(
     start: String(range.start),
     end: String(range.end),
     format,
+    quality,
   });
   if (captionLang) serverParams.set("captionLang", captionLang);
   if (highlightColor) serverParams.set("highlightColor", highlightColor);

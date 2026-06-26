@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parsePlatformFormat } from "@/lib/platform-output";
+import { parsePlatformFormat, parseRenderQuality } from "@/lib/platform-output";
 import { parseHighlightColor } from "@/lib/captions";
 import { renderClipToBuffer } from "@/lib/render-clip";
 
@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   const start = Number(searchParams.get("start"));
   const end = Number(searchParams.get("end"));
   const format = parsePlatformFormat(searchParams.get("format"));
+  const quality = parseRenderQuality(searchParams.get("quality"));
   const captionLang = searchParams.get("captionLang");
   const highlightColor = parseHighlightColor(
     searchParams.get("highlightColor"),
@@ -32,6 +33,8 @@ export async function GET(request: NextRequest) {
         videoId,
         start: String(Math.floor(start)),
         end: String(Math.floor(end)),
+        format,
+        quality,
       });
       const res = await fetch(`${workerUrl}/clip?${params}`, {
         cache: "no-store",
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
       start,
       end,
       format,
-      quality: "full",
+      quality,
       captionLang,
       highlightColor,
     });

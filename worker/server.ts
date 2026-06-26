@@ -6,6 +6,15 @@ import express from "express";
 import { create as createYtDlp } from "youtube-dl-exec";
 import { accessSync } from "fs";
 import { mkdtemp, readFile, rm } from "fs/promises";
+import {
+  formatClipForPlatform,
+  formattedClipPath,
+  rawClipPath,
+} from "./clip-render";
+import {
+  parsePlatformFormat,
+  parseRenderQuality,
+} from "./platform";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { tmpdir } from "os";
@@ -116,12 +125,15 @@ app.get("/clip", async (req, res) => {
   const videoId = String(req.query.videoId || "");
   const start = Number(req.query.start);
   const end = Number(req.query.end);
+  const format = parsePlatformFormat(String(req.query.format || ""));
+  const quality = parseRenderQuality(String(req.query.quality || ""));
   if (!/^[\w-]{11}$/.test(videoId) || !Number.isFinite(start) || !Number.isFinite(end)) {
     return res.status(400).json({ error: "parâmetros inválidos" });
   }
 
   const dir = await mkdtemp(join(tmpdir(), "clip-"));
-  const out = join(dir, "clip.mp4");
+  const raw = rawClipPath(dir);
+  const out = formattedClipPath(dir);
 
   try {
     await ytDlp(`https://www.youtube.com/watch?v=${videoId}`, {
@@ -130,9 +142,11 @@ app.get("/clip", async (req, res) => {
       format:
         "bestvideo[height<=1080][vcodec^=avc1]+bestaudio/best[height<=1080]/best",
       mergeOutputFormat: "mp4",
-      output: out,
+      output: raw,
       forceKeyframesAtCuts: true,
     });
+
+    await formatClipForPlatform(raw, out, format, quality);
 
     const buffer = await readFile(out);
     res.setHeader("Content-Type", "video/mp4");

@@ -1,4 +1,9 @@
-import type { PlatformId } from "@/types";
+export type PlatformId =
+  | "shorts"
+  | "reels"
+  | "tiktok"
+  | "twitter"
+  | "facebook";
 
 export type RenderQuality = "preview" | "full";
 
@@ -8,8 +13,7 @@ export interface PlatformOutput {
   label: string;
 }
 
-/** Output resolution per social platform — 4K when the aspect allows. */
-export const PLATFORM_OUTPUT: Record<PlatformId, PlatformOutput> = {
+const PLATFORM_OUTPUT: Record<PlatformId, PlatformOutput> = {
   shorts: { width: 2160, height: 3840, label: "9:16 4K" },
   reels: { width: 2160, height: 3840, label: "9:16 4K" },
   tiktok: { width: 2160, height: 3840, label: "9:16 4K" },
@@ -17,7 +21,7 @@ export const PLATFORM_OUTPUT: Record<PlatformId, PlatformOutput> = {
   facebook: { width: 3840, height: 2160, label: "16:9 4K" },
 };
 
-const VALID_FORMATS = new Set<PlatformId>([
+const VALID = new Set<PlatformId>([
   "shorts",
   "reels",
   "tiktok",
@@ -25,18 +29,15 @@ const VALID_FORMATS = new Set<PlatformId>([
   "facebook",
 ]);
 
-export function parsePlatformFormat(value: string | null): PlatformId {
-  if (value && VALID_FORMATS.has(value as PlatformId)) {
-    return value as PlatformId;
-  }
+export function parsePlatformFormat(value: string | null | undefined): PlatformId {
+  if (value && VALID.has(value as PlatformId)) return value as PlatformId;
   return "shorts";
 }
 
-export function parseRenderQuality(value: string | null): RenderQuality {
+export function parseRenderQuality(value: string | null | undefined): RenderQuality {
   return value === "preview" ? "preview" : "full";
 }
 
-/** Scaled output — preview uses half resolution for faster renders. */
 export function outputForQuality(
   format: PlatformId,
   quality: RenderQuality,
@@ -50,7 +51,6 @@ export function outputForQuality(
   };
 }
 
-/** Center-crop to target aspect ratio, then scale to platform resolution. */
 export function buildCropScaleFilter(width: number, height: number): string {
   const ar = width / height;
   return [

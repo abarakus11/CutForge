@@ -119,6 +119,7 @@ export async function renderClipBlob(
   videoDuration?: number,
   captions?: CaptionSettings,
   onProgress?: (pct: number, message: string) => void,
+  quality: "preview" | "full" = "full",
 ): Promise<Blob> {
   if (FORCE_CLIENT || shouldUseClientRender()) {
     return renderClipClient({
@@ -126,7 +127,7 @@ export async function renderClipBlob(
       start,
       end,
       format,
-      quality: "full",
+      quality,
       captionLang: captions?.language || "auto",
       highlightColor: captions?.highlightColor || "#FFFF00",
       onProgress,
@@ -138,7 +139,7 @@ export async function renderClipBlob(
     start: String(Math.floor(start)),
     end: String(Math.floor(end)),
     format,
-    quality: "full",
+    quality,
     captionLang: captions?.language || "auto",
     highlightColor: captions?.highlightColor || "#FFFF00",
   });
