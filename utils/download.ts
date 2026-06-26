@@ -27,6 +27,20 @@ function sanitize(name: string): string {
   );
 }
 
+async function renderViaServerRender(
+  params: URLSearchParams,
+): Promise<Blob | null> {
+  try {
+    const res = await fetch(`/api/clips/render?${params}`, {
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (res.ok) return res.blob();
+  } catch {
+    // fallback
+  }
+  return null;
+}
+
 async function renderViaServerPreview(
   params: URLSearchParams,
 ): Promise<Blob | null> {
@@ -80,7 +94,10 @@ async function fetchClipBlob(
   }
 
   onProgress?.(5, "Gerando corte no servidor…");
-  const serverBlob = await renderViaServerDownload(params);
+  let serverBlob = await renderViaServerDownload(params);
+  if (!serverBlob) {
+    serverBlob = await renderViaServerRender(params);
+  }
   if (serverBlob) {
     onProgress?.(100, "Pronto!");
     return serverBlob;
@@ -166,7 +183,10 @@ export async function renderClipBlob(
   }
 
   onProgress?.(5, "Gerando prévia no servidor…");
-  const serverBlob = await renderViaServerPreview(params);
+  let serverBlob = await renderViaServerRender(params);
+  if (!serverBlob) {
+    serverBlob = await renderViaServerPreview(params);
+  }
   if (serverBlob) {
     onProgress?.(100, "Pronto!");
     return serverBlob;

@@ -258,22 +258,12 @@ export async function renderClipClient(
 
   try {
     onProgress?.(8, "Processando no servidor…");
-    const stopTicker = startProgressTicker(
-      onProgress,
-      10,
-      88,
-      "Gerando corte com legendas…",
-    );
-    try {
-      const serverRes = await fetch(`/api/clips/render?${serverParams}`, {
-        signal: AbortSignal.timeout(300000),
-      });
-      if (serverRes.ok) {
-        onProgress?.(100, "Pronto!");
-        return serverRes.blob();
-      }
-    } finally {
-      stopTicker();
+    const serverRes = await fetch(`/api/clips/render?${serverParams}`, {
+      signal: AbortSignal.timeout(300000),
+    });
+    if (serverRes.ok) {
+      onProgress?.(100, "Pronto!");
+      return serverRes.blob();
     }
   } catch {
     // fallback para render no navegador

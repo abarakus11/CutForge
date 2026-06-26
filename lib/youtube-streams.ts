@@ -1,5 +1,5 @@
+import { isVercelRuntime } from "@/lib/youtube-meta";
 import ytdl from "@distube/ytdl-core";
-import { Innertube } from "youtubei.js";
 import { ytDlp, watchUrl, YT_DLP_FLAGS } from "@/lib/ytdlp";
 import {
   fetchInnertubePlayer,
@@ -13,6 +13,13 @@ import {
 } from "@/lib/youtube-visitor";
 
 const EXTRA_CLIENTS = [
+  {
+    clientName: "ANDROID",
+    clientVersion: "20.10.38",
+    androidSdkVersion: 30,
+    hl: "pt",
+    gl: "BR",
+  },
   {
     clientName: "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
     clientVersion: "2.0",
@@ -33,36 +40,6 @@ const EXTRA_CLIENTS = [
     gl: "US",
   },
 ];
-
-function mapYoutubeiStreamingData(
-  streamingData: {
-    formats?: Array<{
-      url?: string;
-      mime_type?: string;
-      height?: number;
-    }>;
-    adaptive_formats?: Array<{
-      url?: string;
-      mime_type?: string;
-      height?: number;
-    }>;
-  } | null,
-): InnertubePlayerResponse {
-  return {
-    streamingData: {
-      formats: (streamingData?.formats ?? []).map((f) => ({
-        url: f.url,
-        mimeType: f.mime_type,
-        height: f.height,
-      })),
-      adaptiveFormats: (streamingData?.adaptive_formats ?? []).map((f) => ({
-        url: f.url,
-        mimeType: f.mime_type,
-        height: f.height,
-      })),
-    },
-  };
-}
 
 async function streamsFromYtdl(videoId: string): Promise<StreamUrls | null> {
   const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${videoId}`);
@@ -134,23 +111,19 @@ export async function fetchStreamsServer(
     }
   }
 
-  for (const fn of [
-    streamsFromYtDlp,
+  const resolvers: Array<(id: string) => Promise<StreamUrls | null>> = [
     streamsFromYtdl,
-    async (id: string) => {
-      const yt = await Innertube.create({
-        lang: "pt",
-        location: "BR",
-        retrieve_player: true,
-      });
-      const info = await yt.getInfo(id);
-      return pickStreamUrls(mapYoutubeiStreamingData(info.streaming_data ?? null));
-    },
     async (id: string) => {
       const player = await fetchInnertubePlayer(id);
       return player ? pickStreamUrls(player) : null;
     },
-  ]) {
+  ];
+
+  if (!isVercelRuntime()) {
+    resolvers.unshift(streamsFromYtDlp);
+  }
+
+  for (const fn of resolvers) {
     try {
       const picked = await fn(videoId);
       if (picked) return picked;
