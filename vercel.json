@@ -8,15 +8,15 @@
     },
     "app/api/clips/render/route.ts": {
       "maxDuration": 300,
-      "memory": 3008
+      "memory": 2048
     },
     "app/api/clips/preview/route.ts": {
       "maxDuration": 300,
-      "memory": 3008
+      "memory": 2048
     },
     "app/api/clips/download/route.ts": {
       "maxDuration": 300,
-      "memory": 3008
+      "memory": 2048
     }
   }
 }
