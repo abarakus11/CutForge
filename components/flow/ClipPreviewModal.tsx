@@ -9,7 +9,9 @@ import { TagBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { formatTimecode, formatScore, formatDuration } from "@/utils/format";
 import { downloadClip } from "@/utils/download";
-import { previewUrlForClip } from "@/services/youtube";
+import { renderClipBlob } from "@/utils/download";
+import { shouldUseClientRender } from "@/lib/render-env";
+import { prefetchFfmpegClient } from "@/services/clip-render-client";
 import {
   aspectLabelForFormat,
   modalWidthClassForFormat,
@@ -38,13 +40,20 @@ export function ClipPreviewModal({
   const [loading, setLoading] = useState(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [progressMsg, setProgressMsg] = useState("");
 
   const clipFormat = clip?.format || selectedFormat;
   const clipId = clip?.id;
   const clipStart = clip?.start;
   const clipEnd = clip?.end;
+  const clientRender = shouldUseClientRender();
 
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (clientRender) prefetchFfmpegClient();
+  }, [clientRender]);
 
   useEffect(() => {
     if (!clip) return;
@@ -64,27 +73,25 @@ export function ClipPreviewModal({
     setLoading(true);
     setPreviewError(null);
     setPreviewSrc(null);
+    setProgress(0);
+    setProgressMsg(
+      clientRender ? "Preparando renderização no navegador…" : "Renderizando prévia…",
+    );
 
-    const apiUrl = previewUrlForClip(
+    renderClipBlob(
       video.id,
       clipStart,
       clipEnd,
       clipFormat,
       video.duration,
       captions,
-    );
-
-    fetch(apiUrl, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = (await res.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          throw new Error(data.error || "Falha ao gerar a prévia");
-        }
-        return res.blob();
-      })
+      (pct, msg) => {
+        setProgress(pct);
+        setProgressMsg(msg);
+      },
+    )
       .then((blob) => {
+        if (controller.signal.aborted) return;
         setPreviewSrc(URL.createObjectURL(blob));
       })
       .catch((err: Error) => {
@@ -101,7 +108,16 @@ export function ClipPreviewModal({
       controller.abort();
       clearTimeout(timeout);
     };
-  }, [clipId, clipStart, clipEnd, clipFormat, video.id, video.duration, captions]);
+  }, [
+    clipId,
+    clipStart,
+    clipEnd,
+    clipFormat,
+    video.id,
+    video.duration,
+    captions,
+    clientRender,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -114,8 +130,19 @@ export function ClipPreviewModal({
   const handleDownload = async () => {
     if (!clip || downloading) return;
     setDownloading(true);
+    setProgress(0);
+    setProgressMsg("Gerando vídeo para download…");
     try {
-      await downloadClip(clip, video.id, video.duration, captions);
+      await downloadClip(
+        clip,
+        video.id,
+        video.duration,
+        captions,
+        (pct, msg) => {
+          setProgress(pct);
+          setProgressMsg(msg);
+        },
+      );
     } catch (err) {
       alert(err instanceof Error ? err.message : "Erro ao baixar o corte");
     } finally {
@@ -133,6 +160,7 @@ export function ClipPreviewModal({
 
   const frameStyle = playerFrameStyle(clipFormat);
   const showLoader = loading && !previewError;
+  const showProgress = (showLoader || downloading) && clientRender && progressMsg;
 
   const modal = (
     <AnimatePresence>
@@ -200,14 +228,29 @@ export function ClipPreviewModal({
 
               {showLoader && (
                 <div className="absolute inset-0 z-30 grid place-items-center bg-ink-600/95 px-4">
-                  <div className="flex flex-col items-center gap-3 text-center text-white/60">
+                  <div className="flex w-full max-w-xs flex-col items-center gap-3 text-center text-white/60">
                     <Loader2 className="h-7 w-7 animate-spin text-spark-violet" />
                     <span className="text-sm">
-                      Renderizando prévia em 4K com legendas…
+                      {progressMsg || "Renderizando prévia em 4K com legendas…"}
                     </span>
-                    <span className="text-xs text-white/35">
-                      Máxima qualidade — reutiliza cache após a 1ª vez
-                    </span>
+                    {clientRender && progress > 0 && (
+                      <div className="w-full">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className="h-full rounded-full bg-spark-gradient transition-all duration-300"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <span className="mt-1 block text-xs text-white/35">
+                          {progress}%
+                        </span>
+                      </div>
+                    )}
+                    {!clientRender && (
+                      <span className="text-xs text-white/35">
+                        Máxima qualidade — reutiliza cache após a 1ª vez
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
@@ -231,15 +274,21 @@ export function ClipPreviewModal({
               ))}
             </div>
 
+            {showProgress && downloading && (
+              <p className="text-center text-xs text-white/40">{progressMsg}</p>
+            )}
+
             <Button
               variant="glass"
               className="w-full"
               size="lg"
-              disabled={downloading}
+              disabled={downloading || loading}
               onClick={handleDownload}
             >
               <Download className="h-4 w-4" />
-              {downloading ? "Gerando vídeo 4K…" : "Baixar este corte em 4K"}
+              {downloading
+                ? `Gerando vídeo… ${progress > 0 ? `${progress}%` : ""}`
+                : "Baixar este corte em 4K"}
             </Button>
           </div>
         </motion.div>

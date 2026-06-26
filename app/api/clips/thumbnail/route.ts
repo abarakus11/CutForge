@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractClipThumbnail } from "@/lib/extract-thumbnail";
 import { parsePlatformFormat } from "@/lib/platform-output";
+import { isVercelRuntime } from "@/lib/youtube-meta";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -18,6 +19,24 @@ export async function GET(request: NextRequest) {
 
   const clipStart = Number.isFinite(start) ? start : 0;
   const clipEnd = Number.isFinite(end) ? end : clipStart + 30;
+
+  if (isVercelRuntime()) {
+    const thumbUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    try {
+      const res = await fetch(thumbUrl, { cache: "force-cache" });
+      if (res.ok) {
+        const buffer = await res.arrayBuffer();
+        return new NextResponse(buffer, {
+          headers: {
+            "Content-Type": "image/jpeg",
+            "Cache-Control": "public, max-age=86400, immutable",
+          },
+        });
+      }
+    } catch {
+      /* fallback to server render */
+    }
+  }
 
   try {
     const buffer = await extractClipThumbnail({

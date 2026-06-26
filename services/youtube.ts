@@ -2,6 +2,8 @@
  * YouTube service layer.
  */
 import type { CaptionSettings, PlatformId, VideoMeta } from "@/types";
+import { shouldUseClientRender } from "@/lib/render-env";
+import { prefetchFfmpegClient } from "@/services/clip-render-client";
 import { fetchYouTubeDurationClient } from "@/services/youtube-duration";
 
 const YT_PATTERNS: RegExp[] = [
@@ -95,6 +97,12 @@ export function prefetchClipPreview(
   captions?: CaptionSettings,
 ): void {
   if (typeof window === "undefined") return;
+
+  if (shouldUseClientRender()) {
+    prefetchFfmpegClient();
+    return;
+  }
+
   const url = previewUrlForClip(
     videoId,
     start,
