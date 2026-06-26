@@ -25,6 +25,10 @@ export const metadata: Metadata = {
     "clips",
   ],
   authors: [{ name: BRAND.author }],
+  icons: {
+    icon: BRAND.logo,
+    apple: BRAND.logo,
+  },
   openGraph: {
     type: "website",
     locale: "pt_BR",
@@ -32,11 +36,20 @@ export const metadata: Metadata = {
     title: `${BRAND.name} — Cortes virais com IA`,
     description: BRAND.slogan,
     siteName: BRAND.name,
+    images: [
+      {
+        url: BRAND.logo,
+        width: 1536,
+        height: 1024,
+        alt: BRAND.logoAlt,
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: `${BRAND.name} — Cortes virais com IA`,
     description: BRAND.slogan,
+    images: [BRAND.logo],
   },
   robots: { index: true, follow: true },
 };

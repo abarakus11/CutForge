@@ -39,7 +39,7 @@ export function Navbar() {
           )}
         >
           <a href="#top" className="shrink-0" aria-label="CutForge AI — início">
-            <Logo />
+            <Logo priority />
           </a>
 
           <div className="hidden items-center gap-1 md:flex">

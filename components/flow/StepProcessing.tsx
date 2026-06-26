@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Check, Loader2 } from "lucide-react";
+import { Logo } from "@/components/ui/Logo";
 import { useProcessingProgress } from "@/hooks/useProcessingProgress";
 import type { VideoMeta } from "@/types";
 import { cn } from "@/utils/cn";
@@ -32,6 +33,10 @@ export function StepProcessing({ video, onComplete }: StepProcessingProps) {
       className="w-full"
     >
       <div className="rounded-3xl border border-line bg-white/[0.025] p-6 backdrop-blur-xl sm:p-8">
+        <div className="mb-6 flex justify-center">
+          <Logo className="opacity-90" />
+        </div>
+
         {/* Signature: a timeline being scanned + lit, segment by segment */}
         <div className="relative mb-7 flex h-24 items-end gap-[3px] overflow-hidden rounded-xl bg-ink-700/60 px-3 py-3">
           {Array.from({ length: BAR_COUNT }).map((_, i) => {

@@ -13,9 +13,8 @@ export function Footer() {
     <footer className="relative mt-32 border-t border-line">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <div className="flex flex-col items-start justify-between gap-8 sm:flex-row sm:items-center">
-          <div className="space-y-3">
-            <Logo />
-            <p className="max-w-xs text-sm text-white/45">{BRAND.slogan}</p>
+          <div className="space-y-4">
+            <Logo variant="full" />
           </div>
 
           <nav className="flex flex-wrap items-center gap-x-6 gap-y-2">

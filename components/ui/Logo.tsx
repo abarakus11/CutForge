@@ -1,38 +1,48 @@
+import Image from "next/image";
 import { cn } from "@/utils/cn";
+import { BRAND } from "@/config/constants";
+
+export type LogoVariant = "compact" | "full";
 
 interface LogoProps {
   className?: string;
-  showWordmark?: boolean;
+  /** compact = navbar; full = hero/footer com slogan na imagem */
+  variant?: LogoVariant;
+  priority?: boolean;
 }
 
-/**
- * The CutForge mark: a cut/scissor notch fused with a forge spark.
- * Drawn as inline SVG so it inherits currentColor and scales crisply.
- */
-export function Logo({ className, showWordmark = true }: LogoProps) {
+const SIZES: Record<
+  LogoVariant,
+  { width: number; height: number; className: string }
+> = {
+  compact: {
+    width: 200,
+    height: 56,
+    className: "h-9 w-auto max-w-[200px] object-contain object-left",
+  },
+  full: {
+    width: 520,
+    height: 220,
+    className: "h-auto w-full max-w-[min(100%,520px)] object-contain object-left",
+  },
+};
+
+/** Logo oficial CutForge AI (PNG 3D). */
+export function Logo({
+  className,
+  variant = "compact",
+  priority = false,
+}: LogoProps) {
+  const size = SIZES[variant];
+
   return (
-    <span className={cn("inline-flex items-center gap-2.5", className)}>
-      <span className="relative grid h-8 w-8 place-items-center rounded-xl bg-spark-gradient shadow-glow">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          className="h-[18px] w-[18px] text-white"
-          aria-hidden="true"
-        >
-          {/* Spark / blade */}
-          <path
-            d="M12 2.5l2.6 6.4 6.9.5-5.3 4.5 1.7 6.7L12 17.6 6.1 21.1l1.7-6.7L2.5 9.9l6.9-.5L12 2.5z"
-            fill="rgba(255,255,255,0.95)"
-          />
-          <circle cx="12" cy="12.4" r="2.1" fill="#5B8CFF" />
-        </svg>
-      </span>
-      {showWordmark && (
-        <span className="text-[15px] font-semibold tracking-tight text-white">
-          CutForge
-          <span className="ml-1 text-white/45">AI</span>
-        </span>
-      )}
-    </span>
+    <Image
+      src={BRAND.logo}
+      alt={BRAND.logoAlt}
+      width={size.width}
+      height={size.height}
+      className={cn(size.className, className)}
+      priority={priority}
+    />
   );
 }

@@ -121,7 +121,9 @@ export const CAPTION_LANG_LABELS: Record<string, string> = {
 /** Brand constants reused across metadata and UI. */
 export const BRAND = {
   name: "CutForge AI",
-  slogan:
-    "Transforme qualquer vídeo do YouTube em dezenas de cortes virais em segundos.",
+  slogan: "Transforme qualquer vídeo em cortes virais em segundos.",
   author: "SheikDev",
+  logo: "/brand/logo.png",
+  logoAlt:
+    "CutForge AI — Transforme qualquer vídeo em cortes virais em segundos.",
 } as const;
