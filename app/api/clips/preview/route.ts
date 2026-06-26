@@ -3,6 +3,7 @@ import {
   parsePlatformFormat,
   parseRenderQuality,
 } from "@/lib/platform-output";
+import { isVercelRuntime } from "@/lib/youtube-meta";
 import { parseHighlightColor } from "@/lib/captions";
 import { renderClipToBuffer } from "@/lib/render-clip";
 
@@ -10,6 +11,17 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
+  if (isVercelRuntime()) {
+    return NextResponse.json(
+      {
+        error:
+          "Na Vercel o corte é gerado no seu navegador. Atualize a página (Ctrl+Shift+R).",
+        clientOnly: true,
+      },
+      { status: 503 },
+    );
+  }
+
   const { searchParams } = request.nextUrl;
   const videoId = searchParams.get("videoId");
   const start = Number(searchParams.get("start"));

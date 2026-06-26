@@ -11,7 +11,7 @@ import { formatTimecode, formatScore, formatDuration } from "@/utils/format";
 import { downloadClip } from "@/utils/download";
 import { renderClipBlob } from "@/utils/download";
 import { shouldUseClientRender } from "@/lib/render-env";
-import { prefetchFfmpegClient } from "@/services/clip-render-client";
+import { prefetchFfmpegClient, youtubeEmbedPreviewUrl } from "@/services/clip-render-client";
 import {
   aspectLabelForFormat,
   modalWidthClassForFormat,
@@ -158,6 +158,12 @@ export function ClipPreviewModal({
 
   if (!mounted || !clip) return null;
 
+  const embedUrl =
+    clientRender && clipStart != null && clipEnd != null
+      ? youtubeEmbedPreviewUrl(video.id, clipStart, clipEnd)
+      : null;
+
+  const showEmbed = clientRender && !previewSrc && embedUrl;
   const frameStyle = playerFrameStyle(clipFormat);
   const showLoader = loading && !previewError;
   const showProgress = (showLoader || downloading) && clientRender && progressMsg;
@@ -201,6 +207,16 @@ export function ClipPreviewModal({
               className="clip-preview-frame relative overflow-hidden rounded-xl bg-black"
               style={frameStyle}
             >
+              {showEmbed && (
+                <iframe
+                  src={embedUrl!}
+                  title="Prévia do corte"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  className="absolute inset-0 z-10 h-full w-full"
+                  onLoad={() => setLoading(false)}
+                />
+              )}
+
               {previewSrc && !previewError && (
                 <video
                   key={previewSrc}
@@ -220,14 +236,21 @@ export function ClipPreviewModal({
                 />
               )}
 
-              {previewError && (
+              {previewError && !showEmbed && (
                 <div className="absolute inset-0 z-20 grid place-items-center bg-ink-600 p-4 text-center text-sm text-white/50">
                   {previewError}
                 </div>
               )}
 
+              {previewError && showEmbed && (
+                <div className="absolute bottom-2 left-2 right-2 z-40 rounded-lg bg-black/70 px-3 py-2 text-center text-xs text-amber-200/90">
+                  Prévia MP4 indisponível — exibindo trecho no YouTube. Use Baixar
+                  para tentar gerar o arquivo.
+                </div>
+              )}
+
               {showLoader && (
-                <div className="absolute inset-0 z-30 grid place-items-center bg-ink-600/95 px-4">
+                <div className={`absolute inset-0 z-30 grid place-items-center px-4 ${showEmbed ? "bg-black/40" : "bg-ink-600/95"}`}>
                   <div className="flex w-full max-w-xs flex-col items-center gap-3 text-center text-white/60">
                     <Loader2 className="h-7 w-7 animate-spin text-spark-violet" />
                     <span className="text-sm">

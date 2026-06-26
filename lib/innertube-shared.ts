@@ -2,6 +2,10 @@
  * Innertube player fetch — works in browser (user IP) and Node.
  */
 
+import { pickStreamUrls as pickStreams, type StreamUrls } from "@/lib/stream-pick";
+
+export type { StreamUrls };
+
 const UA =
   "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
@@ -91,49 +95,10 @@ export async function fetchInnertubePlayer(
   return null;
 }
 
-export interface StreamUrls {
-  videoUrl: string;
-  audioUrl: string;
-  height: number;
-}
-
-/** Pick best H.264 video + AAC audio direct URLs from player data. */
 export function pickStreamUrls(
   data: InnertubePlayerResponse,
 ): StreamUrls | null {
-  const adaptive = data.streamingData?.adaptiveFormats ?? [];
-  const combined = data.streamingData?.formats ?? [];
-  const all = [...adaptive, ...combined].filter((f) => f.url);
-
-  const videos = all
-    .filter((f) => f.mimeType?.includes("video") && f.url)
-    .sort((a, b) => (b.height || 0) - (a.height || 0));
-
-  const audios = all
-    .filter((f) => f.mimeType?.includes("audio") && f.url)
-    .sort((a, b) => {
-      const aMp4 = a.mimeType?.includes("mp4a") ? 1 : 0;
-      const bMp4 = b.mimeType?.includes("mp4a") ? 1 : 0;
-      return bMp4 - aMp4;
-    });
-
-  const h264 =
-    videos.find(
-      (f) =>
-        f.mimeType?.includes("avc1") &&
-        (f.height || 0) <= 1080,
-    ) ??
-    videos.find((f) => f.mimeType?.includes("avc1")) ??
-    videos[0];
-  const audio = audios[0];
-
-  if (!h264?.url || !audio?.url) return null;
-
-  return {
-    videoUrl: h264.url,
-    audioUrl: audio.url,
-    height: h264.height || 1080,
-  };
+  return pickStreams(data);
 }
 
 export async function getYouTubeStreamUrls(

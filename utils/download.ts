@@ -8,6 +8,10 @@ import type { CaptionSettings, Clip, PlatformId } from "@/types";
 import { shouldUseClientRender } from "@/lib/render-env";
 import { renderClipClient } from "@/services/clip-render-client";
 
+const FORCE_CLIENT =
+  typeof process !== "undefined" &&
+  process.env.NEXT_PUBLIC_FORCE_CLIENT_RENDER === "1";
+
 function triggerDownload(filename: string, href: string) {
   const a = document.createElement("a");
   a.href = href;
@@ -37,7 +41,7 @@ async function fetchClipBlob(
 ): Promise<Blob> {
   const format = (clip.format || "shorts") as PlatformId;
 
-  if (shouldUseClientRender()) {
+  if (FORCE_CLIENT || shouldUseClientRender()) {
     return renderClipClient({
       videoId,
       start: clip.start,
@@ -116,7 +120,7 @@ export async function renderClipBlob(
   captions?: CaptionSettings,
   onProgress?: (pct: number, message: string) => void,
 ): Promise<Blob> {
-  if (shouldUseClientRender()) {
+  if (FORCE_CLIENT || shouldUseClientRender()) {
     return renderClipClient({
       videoId,
       start,
